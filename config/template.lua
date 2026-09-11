@@ -1,8 +1,8 @@
 -- Config template for Rejoin Engine
 return {
-    -- AutoExecute is now a GLOBAL multi-script manager: scripts live in
-    -- `autoExecuteDeployPath` and are deployed manually via the "Script Manager" menu
-    -- into each app (see appAutoExecutePath below). The user writes the scripts.
+    -- AutoExecute is now managed DIRECTLY in the app's autoexecute folder: scripts are
+    -- added/edited/deleted from the "Script Manager" menu into `appAutoExecutePath`
+    -- (e.g. /sdcard/Delta/Autoexecute). No separate staging folder, no deploy step.
     monitorInterval = 5,
     recoveryDelay = 3,
     recoveryRetries = 3,
@@ -11,7 +11,6 @@ return {
     -- Console log verbosity. Hidden below this level: "DEBUG" shows everything,
     -- "INFO" is the default (hides the monitor's per-probe/su debug spam).
     logLevel = "INFO",
-    autoExecuteDeployPath = "data/autoexecute",
     logPath = "data/rejoin.log",
     -- Optional fast filter for auto-detect clone scan (e.g. "com.apengjers."). Empty = disabled.
     clonePackagePrefix = "",
@@ -46,13 +45,10 @@ return {
         ionice = 3,    -- I/O class: 0=none,1=realtime,2=best-effort,3=idle.
     },
 
-    -- Folder tujuan Deploy (Script Manager / AutoExecute). Scripts di-deploy ke sini
-    -- sebagai <name>.lua. Path ini shared untuk semua instance.
+    -- Folder tujuan AutoExecute (Script Manager). Scripts dikelola LANGSUNG di sini
+    -- sebagai <name>.lua (Add/Edit/Delete). Path ini shared untuk semua instance.
     -- Delta mod: /sdcard/Delta/Autoexecute (internal storage, tidak perlu root).
     appAutoExecutePath = "/sdcard/Delta/Autoexecute",
-
-    -- Where global scripts are stored on the Termux side (Termux folder, no root needed).
-    autoExecuteDeployPath = "data/autoexecute",
 
     -- "Launch All" launches clones ONE AT A TIME, waiting for each to reopen before
     -- starting the next (so floating-window clones each get a chance to appear).

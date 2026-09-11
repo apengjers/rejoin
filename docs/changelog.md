@@ -280,6 +280,15 @@ Initial Project
 - `managers/autoexecute.lua`: rewrote `suCopyIntoApp` — removed manual `su -c` wrapping (caused double-wrapping + quote-breaking when `Shell.exec` also wraps with `su -c`); added `mkdir -p` before `cp` to ensure the destination folder exists; single `cp` attempt with Shell.exec handling root wrapping automatically. Updated module header and `appDestBase` comments.
 - `core/settings_cli.lua`: Settings menu item 7 prompt updated to show Delta path example (`/sdcard/Delta/Autoexecute`).
 
+## v0.7.7 — AutoExecute simplified: manage /sdcard/Delta/Autoexecute directly
+
+- **Real root-cause of Deploy still failing after v0.7.6**: the source path was **relative** (`data/autoexecute/<name>.lua`). When executed through `su -c`, the working directory is `/` (root's), not `$HOME/rejoin`, so the relative path wasn't found → `cp` failed silently → `copy_failed`; the "Deploy failed: table: 0x..." display bug (CLI printed the result table instead of its `errors` contents) masked the real reason.
+- **UI simplified (`core/autoexecute_cli.lua`)**: entering menu 6 now shows the current contents of the app autoexecute folder at the top, with a simple menu below: `1) Add / 2) Edit / 3) Delete / 4) Exit`. List refreshes after each action. Remove the `deployFlow` (and its `table: 0x` bug) entirely — no deploy step anymore.
+- **`managers/autoexecute.lua` rewritten** to manage the app folder directly: `dir()` returns the absolute `appAutoExecutePath`; `save()` writes straight into the folder (mkdir -p + io.open, no `cp`/`su` → immune to the relative-path-in-su bug); `list/read/remove` target the same folder. Removed obsolete `appDestBase`, `suCopyIntoApp`, `deployOne`, `deployAll` (and the global staging model).
+- **Cleanup of unused staging model**: removed `autoExecuteDeployPath` from config/template/settings (Settings menu renumbered 8–15 → 7–14); removed `config/sample_AutoExecute.lua`; setup.sh no longer creates `data/autoexecute` or seeds the sample; setup help updated to `sh run.sh` and notes Delta folder + lua-posix-optional.
+- Config default: `appAutoExecutePath = "/sdcard/Delta/Autoexecute"` (shared folder, internal storage, no root needed).
+- README AutoExecute sections and file tree updated.
+
 ## Upcoming
 
 - Shell Wrapper

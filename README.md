@@ -22,7 +22,7 @@ Rejoin Engine adalah tools otomatisasi berbasis **Lua** yang berjalan di **Termu
 - **Skip restart jika belum login** — clone yang **belum punya akun Roblox login** dan RSS rendah dianggap idle (status `NoLogin`), tidak pernah di-force-relaunch apapun status/kejadiannya (login screen wajar RSS kecil). Deteksi otomatis dengan **scan recursive** token `.ROBLOSECURITY` di direktori data clone (root) — work untuk clone Roblox Lite/mod, bukan cuma `app_webview`. Lihat `Auth` / `cookiePath`.
 - **Optimasi RAM/CPU** — semua clone di-deprioritze (`renice 19` + `ionice idle`) supaya 4 floating window tidak rebutan CPU/RAM. Di-apply ulang tiap launch/recovery (karena pid berubah).
 - **Recovery** — force-stop → launch → buka game/private server → lanjut monitoring. Dicoba berulang (sesuai `recoveryRetries`).
-- **AutoExecute / Script Manager** — kelola **banyak script `.lua`** (global, dipakai semua instance) lewat menu `6) AutoExecute Manager`: List / Create / Edit / Delete / Deploy. Script di-deploy manual ke folder autoexecute tiap aplikasi (`appAutoExecutePath`) via root. Rejoin adalah pengelola script — **semua logika ditulis user** di dalam file script.
+- **AutoExecute / Script Manager** — kelola **script `.lua`** langsung di `appAutoExecutePath` (mis. `/sdcard/Delta/Autoexecute`) lewat menu `6) AutoExecute Manager`: di layar langsung tampil isi folder (Add / Edit / Delete). Rejoin adalah pengelola script — **semua logika ditulis user** di dalam file script.
 
 ---
 
@@ -130,19 +130,17 @@ Contoh:
 
 ```lua
 return {
-    -- AutoExecute kini Script Manager GLOBAL: script disimpan di autoExecuteDeployPath,
-    -- di-deploy manual via menu "Script Manager" ke tiap aplikasi (appAutoExecutePath).
+    -- AutoExecute dikelola LANGSUNG di folder appAutoExecutePath (Add/Edit/Delete)
+    -- via menu "Script Manager". Tidak ada staging/deploy terpisah.
     monitorInterval = 5,       -- detik antar siklus monitor
     recoveryDelay = 3,         -- jeda antar percobaan recovery
     recoveryRetries = 3,       -- berapa kali recovery dicoba
     checkTimeout = 15,         -- detik menunggu app jadi sehat
     debug = true,
-    autoExecuteDeployPath = "data/autoexecute",
     logPath = "data/rejoin.log",
 
-    -- Wajib diisi untuk Deploy (Script Manager): folder autoexecute di aplikasi.
-    -- Butuh root. Contoh: "/data/data/com.roblox.client/files/autoexecute"
-    appAutoExecutePath = "",
+    -- Folder AutoExecute di aplikasi (delta mod: internal storage, tidak perlu root).
+    appAutoExecutePath = "/sdcard/Delta/Autoexecute",
 
     -- Filter cepat opsional untuk Auto Detect (mis. "com.apengjers."). Kosong = nonaktif.
     clonePackagePrefix = "",
@@ -209,8 +207,7 @@ rejoin/
 ├── launch.log                  # auto-debug tiap siklus menu 1 (Launch + Monitor)
 ├── config/
 │   ├── config.lua              # konfigurasi aktif (dibuat otomatis dr template)
-│   ├── template.lua            # template konfigurasi
-│   └── sample_AutoExecute.lua  # contoh script AutoExecute
+│   └── template.lua            # template konfigurasi
 ├── core/
 │   ├── config.lua              # loader & saver config
 │   ├── logger.lua              # logger ke file
@@ -228,7 +225,7 @@ rejoin/
 │   ├── monitor.lua             # loop monitor
 │   ├── recovery.lua            # engine recovery
 │   ├── optimizer.lua           # renice/ionice deprioritasi clone
-│   ├── autoexecute.lua         # Script Manager (list/save/remove/deploy global)
+│   ├── autoexecute.lua         # AutoExecute: kelola langsung folder app (list/add/edit/delete)
 │   └── auth.lua                # deteksi login via cookie (.ROBLOSECURITY)
 ├── utils/
 │   ├── shell.lua               # eksekusi shell (dengan timeout anti-hang)
@@ -236,8 +233,7 @@ rejoin/
 │   ├── android.lua             # wrapper am/intent
 │   ├── file.lua, json.lua, timer.lua
 └── data/
-    ├── rejoin.log              # log runtime
-    └── autoexecute/            # folder deploy AutoExecute
+    └── rejoin.log              # log runtime
 ```
 
 ---
@@ -257,14 +253,14 @@ rejoin/
 - List, Add, Edit, Delete instance
 
 ### AutoExecute / Script Manager (menu `6`)
-- `1) List`, `2) Create`, `3) Edit (overwrite)`, `4) Delete`, `5) Deploy`, `6) Exit`
-- Create/Edit: ketik kode baris-per-baris, akhiri dengan baris **`END`** di paling bawah (baris `END` tidak disimpan). Setelah create ditanya "Mau tambah lagi? (y/n)".
-- Deploy menyalin tiap script ke `appAutoExecutePath/<name>.lua` di tiap instance (via root). Wajib isi `appAutoExecutePath` di config.
+- Saat masuk, langsung tampil **isi folder `appAutoExecutePath`** (mis. `/sdcard/Delta/Autoexecute`) di atas, lalu menu: `1) Add`, `2) Edit`, `3) Delete`, `4) Exit`. Setelah tiap aksi list di-refresh.
+- Add/Edit: ketik kode baris-per-baris, akhiri dengan baris **`END`** di paling bawah (baris `END` tidak disimpan). Setelah add ditanya "Mau tambah lagi? (y/n)".
+- Script ditulis **langsung** ke `appAutoExecutePath/<name>.lua` (folder dibuat otomatis bila belum ada). Tidak ada langkah deploy.
 
 ### Settings
 - `monitorInterval`, `recoveryDelay`, `recoveryRetries`, `checkTimeout`
 - `debug` (toggle)
-- `appAutoExecutePath`, `autoExecuteDeployPath`, `logPath`
+- `appAutoExecutePath`, `logPath`
 - `clonePackagePrefix`
 - `freezeTimeout` (detik sebelum relaunch app freeze), `gracePeriod`, `anrCheckEnabled`
 

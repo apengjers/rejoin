@@ -5,7 +5,6 @@ return {
     recoveryRetries = 3,
     checkTimeout = 15,
     debug = true,
-    autoExecuteDeployPath = "data/autoexecute",
     logPath = "data/rejoin.log",
     -- Optional fast filter for auto-detect clone scan (e.g. "com.apengjers."). Empty = disabled.
     clonePackagePrefix = "",

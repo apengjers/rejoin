@@ -18,7 +18,6 @@ local function printSettings(conf)
     print("  debug = " .. tostring(conf.debug))
     print("  logLevel = " .. tostring(conf.logLevel or "INFO"))
     print("  appAutoExecutePath = " .. tostring(conf.appAutoExecutePath or ""))
-    print("  autoExecuteDeployPath = " .. tostring(conf.autoExecuteDeployPath))
     print("  logPath = " .. tostring(conf.logPath))
     print("  clonePackagePrefix = " .. tostring(conf.clonePackagePrefix or ""))
     print("  freezeTimeout = " .. tostring(conf.freezeTimeout))
@@ -39,7 +38,7 @@ function CLI.run()
     conf.debug = conf.debug == nil and true or conf.debug
     conf.logLevel = conf.logLevel or "INFO"
     conf.appAutoExecutePath = conf.appAutoExecutePath or ""
-    conf.autoExecuteDeployPath = conf.autoExecuteDeployPath or "data/autoexecute"
+    conf.autoExecuteDeployPath = nil
     conf.logPath = conf.logPath or "data/rejoin.log"
     conf.clonePackagePrefix = conf.clonePackagePrefix or ""
     conf.freezeTimeout = conf.freezeTimeout or 300
@@ -51,7 +50,7 @@ function CLI.run()
     if conf.useRoot == nil then conf.useRoot = true end
 
     while true do
-        print('\nSettings Menu:\n  1) View settings\n  2) Edit monitorInterval\n  3) Edit recoveryDelay\n  4) Edit recoveryRetries\n  5) Edit checkTimeout\n  6) Toggle debug\n  7) Edit appAutoExecutePath\n  8) Edit autoExecute deploy path\n  9) Edit logPath\n 10) Edit clonePackagePrefix\n 11) Edit freezeTimeout\n 12) Edit gracePeriod\n 13) Toggle anrCheckEnabled\n 14) Edit launch wait settings\n 15) Edit logLevel\n 16) Save and Exit\n 17) Exit without saving\n')
+        print('\nSettings Menu:\n  1) View settings\n  2) Edit monitorInterval\n  3) Edit recoveryDelay\n  4) Edit recoveryRetries\n  5) Edit checkTimeout\n  6) Toggle debug\n  7) Edit appAutoExecutePath\n  8) Edit logPath\n  9) Edit clonePackagePrefix\n 10) Edit freezeTimeout\n 11) Edit gracePeriod\n 12) Toggle anrCheckEnabled\n 13) Edit launch wait settings\n 14) Edit logLevel\n 15) Save and Exit\n 16) Exit without saving\n')
         local choice = prompt("Choose: ") or ""
         choice = choice:match("^%s*(.-)%s*$")
         if choice == "1" then
@@ -76,29 +75,26 @@ function CLI.run()
             conf.debug = not conf.debug
             print("debug = " .. tostring(conf.debug))
         elseif choice == "7" then
-            local v = prompt("appAutoExecutePath (folder tujuan deploy, contoh: /sdcard/Delta/Autoexecute): [" .. tostring(conf.appAutoExecutePath or "") .. "] ")
+            local v = prompt("appAutoExecutePath (folder AutoExecute, contoh: /sdcard/Delta/Autoexecute): [" .. tostring(conf.appAutoExecutePath or "") .. "] ")
             if v and v ~= "" then conf.appAutoExecutePath = v end
         elseif choice == "8" then
-            local v = prompt("autoExecute deploy path: [" .. tostring(conf.autoExecuteDeployPath) .. "] ")
-            if v and v ~= "" then conf.autoExecuteDeployPath = v end
-        elseif choice == "9" then
             local v = prompt("logPath: [" .. tostring(conf.logPath) .. "] ")
             if v and v ~= "" then conf.logPath = v end
-        elseif choice == "10" then
+        elseif choice == "9" then
             local v = prompt("clonePackagePrefix (empty to disable): [" .. tostring(conf.clonePackagePrefix) .. "] ")
             if v and v ~= "" then conf.clonePackagePrefix = v end
-        elseif choice == "11" then
+        elseif choice == "10" then
             local v = prompt("freezeTimeout (seconds before relaunch): [" .. tostring(conf.freezeTimeout) .. "] ")
             local n = tonumber(v)
             if n and n > 0 then conf.freezeTimeout = n else print("Invalid number") end
-        elseif choice == "12" then
+        elseif choice == "11" then
             local v = prompt("gracePeriod (seconds after launch): [" .. tostring(conf.gracePeriod) .. "] ")
             local n = tonumber(v)
             if n and n > 0 then conf.gracePeriod = n else print("Invalid number") end
-        elseif choice == "13" then
+        elseif choice == "12" then
             conf.anrCheckEnabled = not (conf.anrCheckEnabled and true or false)
             print("anrCheckEnabled = " .. tostring(conf.anrCheckEnabled and true or false))
-        elseif choice == "14" then
+        elseif choice == "13" then
             local v = prompt("launchWaitInterval (poll, seconds): [" .. tostring(conf.launchWaitInterval) .. "] ")
             local n = tonumber(v)
             if n and n > 0 then conf.launchWaitInterval = n else print("Invalid number") end
@@ -118,7 +114,7 @@ function CLI.run()
                     print("Invalid value (use true/false)")
                 end
             end
-        elseif choice == "15" then
+        elseif choice == "14" then
             local v = prompt("logLevel (DEBUG/INFO/WARN/ERROR): [" .. tostring(conf.logLevel or "INFO") .. "] ")
             if v and v ~= "" then
                 local lvl = v:upper()
@@ -128,7 +124,7 @@ function CLI.run()
                     print("Invalid level (use DEBUG/INFO/WARN/ERROR)")
                 end
             end
-        elseif choice == "16" then
+        elseif choice == "15" then
             local ok, err = Config.save(conf)
             if ok then
                 print("Settings saved")
@@ -140,7 +136,7 @@ function CLI.run()
                 print("Failed to save: " .. tostring(err))
             end
             break
-        elseif choice == "17" then
+        elseif choice == "16" then
             print("Aborting without saving")
             break
         else

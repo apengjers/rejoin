@@ -1,4 +1,3 @@
-local Logger = require("core.logger")
 local AutoExecute = require("managers.autoexecute")
 
 local CLI = {}
@@ -24,6 +23,7 @@ local function readScript()
     return table.concat(lines, "\n") .. "\n"
 end
 
+-- Print the current contents of the Delta autoexecute folder.
 local function printList()
     local list, err = AutoExecute.list()
     if not list then
@@ -31,10 +31,10 @@ local function printList()
         return
     end
     if #list == 0 then
-        print("(no scripts yet)")
+        print("(belum ada script — pilih Add untuk buat)")
         return
     end
-    print(string.format("Scripts (%d):", #list))
+    print(string.format("Isi folder (%d script):", #list))
     for _, s in ipairs(list) do
         print(string.format("  %-32s %6d bytes", s.name, s.size))
     end
@@ -46,7 +46,7 @@ local function wantMore()
     return a:lower() == "y"
 end
 
-local function createFlow()
+local function addFlow()
     while true do
         local name = prompt("Script name (no .lua): ") or ""
         name = name:match("^%s*(.-)%s*$")
@@ -61,6 +61,7 @@ local function createFlow()
             print("Failed to save: " .. tostring(res))
             return
         end
+        printList()
         if not wantMore() then return end
     end
 end
@@ -75,6 +76,7 @@ local function editFlow()
     if content == nil then print("Input dibatalkan (EOF)."); return end
     local ok, res = AutoExecute.save(name, content)
     if ok then print("Overwritten: " .. tostring(res)) else print("Failed: " .. tostring(res)) end
+    printList()
 end
 
 local function deleteFlow()
@@ -86,36 +88,26 @@ local function deleteFlow()
     if confirm:lower() ~= "yes" then print("Aborted"); return end
     local ok, err = AutoExecute.remove(name)
     if ok then print("Deleted " .. name .. ".lua") else print("Failed to delete: " .. tostring(err)) end
-end
-
-local function deployFlow()
-    local ok, res = AutoExecute.deployAll()
-    if not ok then
-        print("Deploy failed: " .. tostring(res))
-    else
-        print(string.format("Deployed %d script(s) to app.", res and res.okCount or 0))
-        if res and res.errors and #res.errors > 0 then
-            for _, e in ipairs(res.errors) do print("  - " .. tostring(e)) end
-        end
-    end
+    printList()
 end
 
 function CLI.run()
     while true do
-        print("\nAutoExecute / Script Manager:\n  1) List scripts\n  2) Create script\n  3) Edit (overwrite) script\n  4) Delete script\n  5) Deploy scripts to app\n  6) Exit\n")
+        print("\nAutoExecute — folder Delta/Autoexecute:")
+        printList()
+        print("  1) Add script")
+        print("  2) Edit script")
+        print("  3) Delete script")
+        print("  4) Exit")
         local choice = prompt("Choose an option: ") or ""
         choice = choice:match("^%s*(.-)%s*$")
         if choice == "1" then
-            printList()
+            addFlow()
         elseif choice == "2" then
-            createFlow()
-        elseif choice == "3" then
             editFlow()
-        elseif choice == "4" then
+        elseif choice == "3" then
             deleteFlow()
-        elseif choice == "5" then
-            deployFlow()
-        elseif choice == "6" then
+        elseif choice == "4" then
             print("Exiting AutoExecute Manager")
             break
         else

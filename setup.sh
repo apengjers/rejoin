@@ -32,13 +32,14 @@ else
   fi
 fi
 
-# lua-posix: needed so Ctrl+C actually stops the monitor on Termux (a SIGINT handler is
-# installed when lua-posix is present). Only available for Lua PUC-Rio, NOT luajit.
+# lua-posix (OPTIONAL): enables an in-process SIGINT handler. The recommended way to
+# stop the monitor is the run.sh wrapper (catches Ctrl+C in the shell and kills the
+# Lua process), which works without lua-posix. Only available for Lua PUC-Rio, NOT luajit.
 if command -v lua >/dev/null 2>&1 && ! (lua -v 2>&1 | grep -qi "luajit"); then
-  echo "Installing lua-posix (for Ctrl+C to stop the monitor)..."
-  pkg install -y lua-posix || echo "Warning: lua-posix install failed; Ctrl+C may not stop the monitor."
+  echo "Installing lua-posix (optional, improves Ctrl+C)..."
+  pkg install -y lua-posix || echo "Warning: lua-posix install failed; use `sh run.sh` for reliable Ctrl+C."
 else
-  echo "Warning: lua-posix is not available for luajit; Ctrl+C won't stop the monitor. Switch to 'lua' (pkg install lua) for full support."
+  echo "Warning: lua-posix is not available for luajit. Use `sh run.sh` for reliable Ctrl+C."
 fi
 
 # Optional: luarocks and cjson
@@ -51,7 +52,6 @@ fi
 
 # Create necessary folders
 echo "Creating runtime directories..."
-mkdir -p "$HOME/rejoin/data/autoexecute"
 mkdir -p "$HOME/rejoin/config"
 mkdir -p "$HOME/rejoin/assets"
 mkdir -p "$HOME/rejoin/logs"
@@ -73,12 +73,6 @@ else
   fi
 fi
 
-# Copy sample AutoExecute to deploy folder if present
-if [ -f "$HOME/rejoin/config/sample_AutoExecute.lua" ]; then
-  echo "Installing sample AutoExecute to data/autoexecute"
-  cp "$HOME/rejoin/config/sample_AutoExecute.lua" "$HOME/rejoin/data/autoexecute/sample_AutoExecute.lua" || true
-fi
-
 # Ensure data log file exists
 touch "$HOME/rejoin/data/rejoin.log" || true
 
@@ -92,21 +86,22 @@ Setup complete.
 Next steps (on device):
   cd $HOME/rejoin
   # Run interactive mode (wizard will run if config is new):
-  lua main.lua
+  sh run.sh
 
   # Or run a dry-run monitor simulation (no shell side effects):
-  lua main.lua --dry-run --headless --start-monitor
+  sh run.sh --dry-run --headless --start-monitor
 
   # Or run headless monitor for real (be careful - will execute am/pidof commands):
-  lua main.lua --headless --start-monitor
+  sh run.sh --headless --start-monitor
 
-If you need to enable root-powered injection or copying into app storage, set appAutoExecutePath in config/config.lua to the target app folder (requires root), or use su/tsu as appropriate.
+AutoExecute scripts are managed directly in /sdcard/Delta/Autoexecute from the
+"6) AutoExecute Manager" menu (Add/Edit/Delete write straight into that folder).
+
+For Ctrl+C to stop the monitor, run via run.sh (a shell wrapper that catches
+Ctrl+C and kills the Lua process). lua-posix is optional: the in-process SIGINT
+handler only works when lua-posix is available.
 
 If any commands fail, inspect the log at data/rejoin.log and share it for troubleshooting.
-
-Tip: the monitor shows a live status table and stops on Ctrl+C. For Ctrl+C to work,
-lua-posix must be installed:  pkg install lua-posix   (it is installed automatically
-by this script when using Lua, not luajit).
 
 EOF
 
