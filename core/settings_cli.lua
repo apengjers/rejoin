@@ -76,7 +76,7 @@ function CLI.run()
             conf.debug = not conf.debug
             print("debug = " .. tostring(conf.debug))
         elseif choice == "7" then
-            local v = prompt("appAutoExecutePath (app autoexecute folder, e.g. /data/data/<pkg>/files/autoexecute): [" .. tostring(conf.appAutoExecutePath or "") .. "] ")
+            local v = prompt("appAutoExecutePath (folder tujuan deploy, contoh: /sdcard/Delta/Autoexecute): [" .. tostring(conf.appAutoExecutePath or "") .. "] ")
             if v and v ~= "" then conf.appAutoExecutePath = v end
         elseif choice == "8" then
             local v = prompt("autoExecute deploy path: [" .. tostring(conf.autoExecuteDeployPath) .. "] ")

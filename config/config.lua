@@ -35,8 +35,9 @@ return {
         renice = 19,   -- CPU scheduling priority (higher = lower). 19 = lowest.
         ionice = 3,    -- I/O class: 0=none,1=realtime,2=best-effort,3=idle.
     },
-    -- Optional: if you want to attempt su-copy into app storage, set appAutoExecutePath to a writable path (requires root)
-    -- appAutoExecutePath = "/data/data/<package>/files/autoexecute",
+    -- Folder tujuan Deploy (Script Manager / AutoExecute). Scripts di-deploy ke sini
+    -- sebagai <name>.lua. Path ini shared untuk semua instance (Delta mod: internal storage).
+    appAutoExecutePath = "/sdcard/Delta/Autoexecute",
     instances = {
         [1] = {
         id = 1,

@@ -271,7 +271,14 @@ Initial Project
 - Added **`run.sh`**             : a one-file shell wrapper that launches `lua main.lua "$@"` as a child, installs a `trap INT TERM` that `kill -TERM` the child, and `wait`s on it. `kill(1)` from outside the process is unaffected by the child's internal SIGINT blocking, so Ctrl+C stops the engine reliably **in the same terminal** — no extra session needed. Usage: `sh run.sh [flags...]`.
 - `managers/monitor.lua`: `installSignalHandler` warning updated — instead of telling the user to `pkg install lua-posix` (unavailable), it now points to `sh run.sh`. The handler itself is kept (used automatically when lua-posix exists on another device).
 - README: prerequisites + quickstart + headless sections updated to run via `run.sh`; lua-posix demoted to optional. `termux-boot.sh` unchanged (boot service has no interactive terminal, so Ctrl+C is not relevant there).
+- README: added "Matikan auto-boot" section (`rm ~/.termux/boot/start-rejoin.sh`) under the auto-start docs.
 
+## v0.7.6 — AutoExecute Deploy fix: Delta path, mkdir -p, quoting
+
+- **Root cause of AutoExecute Deploy not working**: `appAutoExecutePath` was commented out in `config/config.lua` → deploy always failed with "appAutoExecutePath is empty". Additionally, the destination path was not per-instance but the actual Delta mod autoexecute folder lives at `/sdcard/Delta/Autoexecute` (internal storage, shared across all instances) — not inside `/data/data/<pkg>/` as assumed.
+- `config/config.lua` + `config/template.lua`: `appAutoExecutePath` set to `/sdcard/Delta/Autoexecute` (Delta mod default). Comment updated to reflect internal storage path.
+- `managers/autoexecute.lua`: rewrote `suCopyIntoApp` — removed manual `su -c` wrapping (caused double-wrapping + quote-breaking when `Shell.exec` also wraps with `su -c`); added `mkdir -p` before `cp` to ensure the destination folder exists; single `cp` attempt with Shell.exec handling root wrapping automatically. Updated module header and `appDestBase` comments.
+- `core/settings_cli.lua`: Settings menu item 7 prompt updated to show Delta path example (`/sdcard/Delta/Autoexecute`).
 
 ## Upcoming
 

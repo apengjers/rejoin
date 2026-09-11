@@ -46,11 +46,10 @@ return {
         ionice = 3,    -- I/O class: 0=none,1=realtime,2=best-effort,3=idle.
     },
 
-    -- App folder used by Deployment (Script Manager / AutoExecute). The user MUST set
-    -- this to the application's autoexecute path (requires root to write into app data).
-    -- Scripts are copied here as <name>.lua when you choose "Deploy" in the Script Manager.
-    -- Example: "/data/data/com.roblox.client/files/autoexecute"
-    appAutoExecutePath = "",
+    -- Folder tujuan Deploy (Script Manager / AutoExecute). Scripts di-deploy ke sini
+    -- sebagai <name>.lua. Path ini shared untuk semua instance.
+    -- Delta mod: /sdcard/Delta/Autoexecute (internal storage, tidak perlu root).
+    appAutoExecutePath = "/sdcard/Delta/Autoexecute",
 
     -- Where global scripts are stored on the Termux side (Termux folder, no root needed).
     autoExecuteDeployPath = "data/autoexecute",

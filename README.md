@@ -96,6 +96,16 @@ Biar Termux otomatis terbuka & langsung jalan ke Menu 1 setiap HP dinyalakan:
 3. **Buka aplikasi Termux:Boot sekali** (agar boot receiver terdaftar), lalu reboot HP.
 4. Setiap boot, Termux terbuka otomatis dan menjalankan `lua main.lua --headless --start-monitor --auto-launch` (setara pilih menu `1`).
 
+### Matikan auto-boot
+
+Gemana cara mematikannya? Tarik script dari folder boot agar Termux:Boot tidak menjalankannya lagi saat HP dinyalakan:
+
+```sh
+rm ~/.termux/boot/start-rejoin.sh
+```
+
+Setelah dihapus, Termux tidak akan otomatis membuka & menjalankan engine lagi di boot berikutnya. (Fungsi Manual via `sh run.sh` tetap jalan seperti biasa; boot yang sudah berjalan tetap bisa dihentikan manual.)
+
 ---
 
 ## Konsep: Package Name Clone

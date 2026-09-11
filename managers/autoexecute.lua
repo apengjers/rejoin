@@ -7,13 +7,13 @@ local Shell = require("utils.shell")
 --
 -- The user writes `.lua` scripts from Termux; Rejoin stores them GLOBALLY (shared by
 -- every instance) under the deploy folder (`conf.autoExecuteDeployPath`, default
--- `data/autoexecute`) and, on request, copies them into each clone's application
--- autoexecute folder via root (`conf.appAutoExecutePath`).
+-- `data/autoexecute`) and, on request, copies them into the app's autoexecute folder
+-- via `conf.appAutoExecutePath` (e.g. `/sdcard/Delta/Autoexecute`).
 --
 -- Rejoin is only a SCRIPT MANAGER: the user writes all the actual logic (detection /
 -- response / farming) inside each script. Deployment is manual (from the menu).
 --
--- The target app folder may contain many `.lua` files; each script `<name>.lua` is
+-- The target folder is shared across all instances; each script `<name>.lua` is
 -- copied as-is to `<appAutoExecutePath>/<name>.lua`.
 
 local AutoExecute = {}
@@ -69,8 +69,8 @@ function AutoExecute.remove(name)
     return true
 end
 
--- Resolve the target application autoexecute path configured for an instance.
--- The user MUST set config.appAutoExecutePath (used for every instance).
+-- Resolve the target autoexecute path from config.
+-- The user MUST set config.appAutoExecutePath (used for every instance; shared path).
 -- Returns (destBase, effective) or (nil, errMsg).
 local function appDestBase()
     local conf = Config.get() or {}
@@ -81,20 +81,19 @@ local function appDestBase()
     return base, true
 end
 
--- Copy one script into one instance's app folder over root. Returns (true, dest) or
--- (false, err). Root (su) is used to write into /data/data/<pkg>/...
+-- Copy one script into the app's autoexecute folder. Returns (true, dest) or (false, err).
+-- Ensures the destination directory exists (mkdir -p) before copying. The actual cp is
+-- handled by Shell.exec which wraps with su -c automatically when useRoot is enabled.
 local function suCopyIntoApp(src, dest)
-    local opts = "2>/dev/null"
-    -- Try direct cp, then su-wrapped cp.
-    local cmds = {
-        string.format("cp '%s' '%s' %s", src, dest, opts),
-        string.format("su -c 'cp %s %s' %s", src, dest, opts),
-    }
-    for _, cmd in ipairs(cmds) do
-        local ok, _ = pcall(function() return Shell.exec(cmd) end)
-        if ok and File.exists(dest) then
-            return true, dest
-        end
+    -- Create destination directory if it doesn't exist (no-op if already there).
+    local dir = dest:match("(.+)/[^/]+$")
+    if dir then
+        pcall(function() return Shell.exec(string.format("mkdir -p '%s'", dir)) end)
+    end
+    -- Single cp attempt — Shell.exec handles su -c wrapping when useRoot=true.
+    local ok, _ = pcall(function() return Shell.exec(string.format("cp '%s' '%s'", src, dest)) end)
+    if ok and File.exists(dest) then
+        return true, dest
     end
     return false, "copy_failed"
 end
