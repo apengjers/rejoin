@@ -301,6 +301,16 @@ Initial Project
 - Helper baru `pickFromList(promptLabel)`: list ulang bernomor, baca nomor, validasi 1..N → balikin entry terpilih; nomor invalid → pesan jelas; EOF/batal → balik tanpa aksi.
 - Edit & Delete: ganti prompt ketik nama → **pilih nomor urut** dari list (nama `*.lua` dibersihkan saat tampil). Alur Add tetap minta nama (untuk script baru).
 
+## v0.7.10 — Username di dashboard monitoring
+
+- **Username Roblox per clone di dashboard**: `Status.printSummary` kini menampilkan `package (username)` (mis. `com.apengjers.v3 (apengjers)`), kolom Instance dilebarkan (LCOL 23 → 33) agar muat; ketika username tidak diketahui, cukup menampilkan `package`.
+- **Modul baru `managers/username.lua`** (pola `auth.lua`):
+  - `get(instance)` menyelesaikan username via **cookie `.ROBLOSECURITY`** → API Roblox (`https://users.roblox.com/v1/users/authenticated`), karena token cookie TIDAK mengandung username — hanya bisa di-resolve via API. Di-cache per instance (TTL 600s; hasil gagal 60s anti-hammer).
+  - Fallback **scan lokal** (`shared_prefs`/`files` XML/JSON/TXT/LOG untuk key `username|userName|displayName|accountName|playerName`) jika API gagal/offline; override manual lewat field per-instance `usernamePath` (baris pertama file = username).
+  - **Bukti scan** ditulis ke `data/username_scan.log` (token length, hasil API, hasil lokal) per sesi agar mudah dituning bila ada clone kosong.
+- `managers/monitor.lua`: `Username.reset()` saat monitor start + `Username.prefetch(instances)` sekali sebelum loop utama (dashboard pertama sudah menampilkan username, tanpa block di tiap draw).
+- `config/template.lua`: contoh instance kini punya field opsional `usernamePath = ""` + komentar. README fitur / monitoring / file tree diperbarui.
+
 ## Upcoming
 
 - Shell Wrapper

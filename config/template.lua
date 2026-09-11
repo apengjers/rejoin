@@ -77,7 +77,10 @@ return {
             id = 1,
             name = "Main",
             package = "com.roblox.client",
-            privateServer = "https://www.roblox.com/games/107778070777162/Steal-An-Egg"
+            privateServer = "https://www.roblox.com/games/107778070777162/Steal-An-Egg",
+            -- (optional) path to a file whose first line is this clone's Roblox username;
+            -- when blank the monitor auto-resolves it via the Roblox API + ROBLOSECURITY cookie.
+            usernamePath = ""
         }
     }
 }

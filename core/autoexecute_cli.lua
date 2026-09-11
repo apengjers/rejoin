@@ -59,6 +59,7 @@ local function pickFromList(promptLabel)
         return nil
     end
     formatList(list)
+    print("")
     local ans = prompt(promptLabel)
     if ans == nil then
         print("\n(Input berakhir — dibatalkan)")
@@ -123,6 +124,7 @@ function CLI.run()
         local conf = Config.get() or {}
         print("\nAutoExecute Manager — folder: " .. tostring(conf.appAutoExecutePath or "(belum di-set)"))
         printList()
+        print("")
         print("  1) Add script")
         print("  2) Edit script")
         print("  3) Delete script")

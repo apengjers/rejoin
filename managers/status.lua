@@ -1,6 +1,7 @@
 local Logger = require("core.logger")
 local APK = require("managers.apk")
 local Auth = require("managers.auth")
+local Username = require("managers.username")
 local Shell = require("utils.shell")
 
 local Status = {}
@@ -336,7 +337,7 @@ local function blankCell(width)
 end
 
 function Status.printSummary(instances)
-    local LCOL = 23   -- width of the left (Instance) column
+    local LCOL = 33   -- width of the left (Instance) column
     local RCOL = 23   -- width of the right (Status/Value) column
 
     local top  = "╭" .. string.rep("─", LCOL) .. "┬" .. string.rep("─", RCOL) .. "╮"
@@ -378,7 +379,10 @@ function Status.printSummary(instances)
             local status = s and s.status or "offline"
             local ui = STATUS_UI[status] or { status, C.dim }
             local label = ui[1] or "Unknown"
-            table.insert(sb, bodyRow(pkg, label, ui[2]))
+            local uname = nil
+            pcall(function() uname = Username.get(inst) end)
+            local rowText = uname and (pkg .. " (" .. tostring(uname) .. ")") or pkg
+            table.insert(sb, bodyRow(rowText, label, ui[2]))
         end
         table.insert(sb, mid)
     end

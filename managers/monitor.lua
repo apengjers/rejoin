@@ -2,6 +2,7 @@ local Logger = require("core.logger")
 local Timer = require("utils.timer")
 local Status = require("managers.status")
 local Auth = require("managers.auth")
+local Username = require("managers.username")
 local ProbeLog = require("utils.probe_log")
 
 local Monitor = {}
@@ -125,6 +126,10 @@ function Monitor.start(conf, opts)
     Status.resetDashboard()
     ProbeLog.configure(conf)
     ProbeLog.init()
+    Username.reset()
+    -- Warm the username cache once right away so the launch/dashboard draws hit the
+    -- cache instead of firing a Roblox API call on every frame.
+    pcall(function() Username.prefetch(instanceManager.getAll()) end)
     installSignalHandler()
     -- Full-screen dashboard: hide console log lines while monitoring so they don't push
     -- the dashboard around (log lines still go to the log file).
