@@ -295,6 +295,12 @@ Initial Project
 - `managers/autoexecute.lua`: removed `resolveDir()` and its `Shell.exec(mkdir -p)` call entirely — **no `su`/shell anywhere in this module** now. `list()` is a pure read (`File.listDir`); the folder is created lazily on `save()` via `File.write` (os.execute/lfs mkdir, no su, no popen, and only during Add/Edit). Removed the `require("utils.shell")` usage; header comment updated.
 - `core/autoexecute_cli.lua`: banner now shows the actual folder path (`AutoExecute Manager — folder: <appAutoExecutePath>`); menu choice read uses `nil`(=EOF/Ctrl+D) as **clean exit** (`break`) instead of looping; list/error output made tolerant (empty folder → hint to Add). Add/Edit/Delete flows unchanged.
 
+## v0.7.9 — AutoExecute Edit/Delete memakai nomor, bukan nama
+
+- Menampilkan isi folder diseragamkan jadi list **bernomor** (` 1)`, ` 2)`, ... di kedua printList menu dan saat Edit/Delete).
+- Helper baru `pickFromList(promptLabel)`: list ulang bernomor, baca nomor, validasi 1..N → balikin entry terpilih; nomor invalid → pesan jelas; EOF/batal → balik tanpa aksi.
+- Edit & Delete: ganti prompt ketik nama → **pilih nomor urut** dari list (nama `*.lua` dibersihkan saat tampil). Alur Add tetap minta nama (untuk script baru).
+
 ## Upcoming
 
 - Shell Wrapper
