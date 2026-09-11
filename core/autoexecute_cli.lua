@@ -1,4 +1,5 @@
 local AutoExecute = require("managers.autoexecute")
+local Config = require("core.config")
 
 local CLI = {}
 
@@ -93,13 +94,18 @@ end
 
 function CLI.run()
     while true do
-        print("\nAutoExecute — folder Delta/Autoexecute:")
+        local conf = Config.get() or {}
+        print("\nAutoExecute Manager — folder: " .. tostring(conf.appAutoExecutePath or "(belum di-set)"))
         printList()
         print("  1) Add script")
         print("  2) Edit script")
         print("  3) Delete script")
         print("  4) Exit")
-        local choice = prompt("Choose an option: ") or ""
+        local choice = prompt("Choose an option: ")
+        if choice == nil then
+            print("\n(Input berakhir — kembali ke menu utama)")
+            break
+        end
         choice = choice:match("^%s*(.-)%s*$")
         if choice == "1" then
             addFlow()

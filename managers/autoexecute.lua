@@ -9,8 +9,8 @@ local Config = require("core.config")
 -- `/sdcard/Delta/Autoexecute`). No separate staging folder, no deploy step:
 -- Add / Edit / Delete write straight to that folder via absolute paths.
 --
--- Before reads/writes the target folder is ensured to exist (mkdir -p), so the
--- manager works even when the folder hasn't been created yet.
+-- No shell / su is used anywhere in this module: listing is a pure read, and the
+-- folder is created lazily on save (File.write ensures its parent dir exists).
 
 local AutoExecute = {}
 
@@ -29,21 +29,9 @@ local function appDir()
     return dir
 end
 
--- Resolve the managed app folder (helper that errors cleanly).
-local function resolveDir(errLabel)
-    local dir, err = appDir()
-    if not dir then return nil, err or "no_app_path" end
-    -- Ensure the folder exists so every operation below can assume it.
-    pcall(function()
-        local Shell = require("utils.shell")
-        Shell.exec(string.format("mkdir -p '%s'", dir))
-    end)
-    return dir
-end
-
 -- List scripts (names of *.lua) in the app autoexecute folder.
 function AutoExecute.list()
-    local dir, err = resolveDir()
+    local dir, err = appDir()
     if not dir then return nil, err end
     local names, lerr = File.listDir(dir, "lua")
     if not names then return nil, lerr end
@@ -63,7 +51,7 @@ function AutoExecute.save(name, content)
     name = name and name:gsub("[^%w%._%-]", "_") or ""
     name = name:gsub("%.lua$", "")
     if name == "" then return false, "invalid_name" end
-    local dir, err = resolveDir()
+    local dir, err = appDir()
     if not dir then return false, err end
     local file = dir .. "/" .. name .. ".lua"
     local ok, werr = File.write(file, content)
@@ -76,7 +64,7 @@ end
 function AutoExecute.read(name)
     name = name and name:gsub("%.lua$", "") or ""
     if name == "" then return nil, "invalid_name" end
-    local dir, err = resolveDir()
+    local dir, err = appDir()
     if not dir then return nil, err end
     return File.read(dir .. "/" .. name .. ".lua")
 end
@@ -85,7 +73,7 @@ end
 function AutoExecute.remove(name)
     name = name and name:gsub("%.lua$", "") or ""
     if name == "" then return false, "invalid_name" end
-    local dir, err = resolveDir()
+    local dir, err = appDir()
     if not dir then return false, err end
     local file = dir .. "/" .. name .. ".lua"
     if not File.exists(file) then return false, "not_found" end

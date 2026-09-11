@@ -289,6 +289,12 @@ Initial Project
 - Config default: `appAutoExecutePath = "/sdcard/Delta/Autoexecute"` (shared folder, internal storage, no root needed).
 - README AutoExecute sections and file tree updated.
 
+## v0.7.8 — AutoExecute menu: remove su/popen from menu path, anti-spin input
+
+- **Root cause of "can't type anything after choosing menu 6" + messy display**: entering menu 6 ran `resolveDir()` → `Shell.exec("mkdir -p ...")` (wrapped as `su -c` via `io.popen`) **on every loop iteration, before the menu choice was read**. After that shell call the terminal's stdin could return EOF (`io.read()` → `nil`), so every choice read came back empty → the menu loop re-printed the banner+list+options in a tight spin (messy screen, keystrokes got swallowed).
+- `managers/autoexecute.lua`: removed `resolveDir()` and its `Shell.exec(mkdir -p)` call entirely — **no `su`/shell anywhere in this module** now. `list()` is a pure read (`File.listDir`); the folder is created lazily on `save()` via `File.write` (os.execute/lfs mkdir, no su, no popen, and only during Add/Edit). Removed the `require("utils.shell")` usage; header comment updated.
+- `core/autoexecute_cli.lua`: banner now shows the actual folder path (`AutoExecute Manager — folder: <appAutoExecutePath>`); menu choice read uses `nil`(=EOF/Ctrl+D) as **clean exit** (`break`) instead of looping; list/error output made tolerant (empty folder → hint to Add). Add/Edit/Delete flows unchanged.
+
 ## Upcoming
 
 - Shell Wrapper
