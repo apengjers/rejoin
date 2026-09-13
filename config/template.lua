@@ -61,12 +61,20 @@ return {
     --     (HttpService:PostAsync TIDAK bisa — di-proxy server Roblox).
     --   - enabled=false (default) => NOL perubahan perilaku: monitor jalan seperti
     --     biasa (berbasis RSS), server tidak dinyalakan.
+    --   - strict=true (server-first): kalau server ON dan clone DIPEROLEHKAN kirim
+    --     sinyal (key ter-resolve + login aktif + proses hidup) tapi belum pernah ada
+    --     sinyal > noSignalGrace detik => Freeze (dipulihkan). Kalau prasyarat belum
+    --     lengkap (key nil / logout / server OFF) status jatuh balik ke RSS safety
+    --     (Ingame/Offline/NoLogin) supaya tidak relaunch-spam.
+    --     Per-instance bisa di-override via field `heartbeatRequired` di instances[].
     heartbeat = {
         enabled = false,
         host = "127.0.0.1",
         port = 8080,
         timeout = 30,
         statePath = "data/heartbeat_state.txt",
+        strict = true,
+        noSignalGrace = 180,
     },
 
     -- "Launch All" launches clones ONE AT A TIME, waiting for each to reopen before
@@ -103,7 +111,12 @@ return {
             -- (optional) heartbeat identity for this clone. Blank = the resolved username
             -- is used. Set it to a fixed string and use the SAME key in the in-game
             -- heartbeat script to make matching fully deterministic.
-            heartbeatKey = ""
+            heartbeatKey = "",
+            -- (optional) override `heartbeat.strict` for THIS clone only.
+            --   true  = clone DIHARUSKAN kirim sinyal (no-signal > grace => Freeze)
+            --   false = clone tak pernah di-Freeze karena belum kirim sinyal (tetap RSS)
+            --   blank = ikut setting global `heartbeat.strict`
+            heartbeatRequired = nil
         }
     }
 }

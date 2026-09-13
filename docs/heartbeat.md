@@ -54,9 +54,12 @@ dan pakai key yang sama di script.)
        port = 8080,
        timeout = 30,          -- detik tanpa sinyal sebelum dianggap freeze
        statePath = "data/heartbeat_state.txt",
+       strict = true,         -- server-first (lihat "Mode strict" di bawah)
+       noSignalGrace = 180,   -- detik proses hidup tanpa sinyal sebelum di-Freeze
    },
    ```
-   Optionally `heartbeatKey = "apengjers3"` di tiap instance.
+   Optionally `heartbeatKey = "apengjers3"` di tiap instance, dan/atau
+   `heartbeatRequired = true/false` untuk override `strict` per clone.
 
 2. **Pasang script in-game** via AutoExecute Manager:
    ```sh
@@ -95,17 +98,50 @@ Semantik dipakai **selalu**, terlepas `heartbeat.enabled` on/off:
 | Sinyal berhenti & akun tidak login | `NoLogin` (dim, tidak pernah relaunch) |
 | Belum pernah ada sinyal | `Ingame` (kondisi pertama) |
 
+### Mode strict (server-first)
+
+Saat `heartbeat.strict = true` **dan** server `ON`, Rejoin tidak percaya RSS untuk
+klaim "hijau". Sebuah clone yang **diperolehkan** kirim sinyal (bakal ter-resolve +
+akun login + proses hidup) tapi tidak pernah mengirim sama sekali selama
+`noSignalGrace` detik → di-*Freeze* & dipulihkan/relaunch (sinyal memang wajib untuk
+clone itu). Prioritas kondisi:
+
+| Clone ... | dengan strict | hasil |
+|---|---|---|
+| baru dapat sinyal fresh | — | `Running` |
+| sinyal stale & login | — | `Freeze` → relaunch 5 mnt |
+| proses hidup ≥ `noSignalGrace` TANPA sinyal + key ter-resolve + login | `true` | `Freeze` → relaunch 5 mnt |
+| belum pernah sinyal TAPI key masih nil / account logout / proses mati / server OFF | apa pun | tetap RSS safety: `Ingame`/`Offline`/`NoLogin` — **tidak di-Freeze** |
+
+Override per clone: `heartbeatRequired = false` → clone itu tak pernah di-Freeze karena
+diam (mis. sementara Delta/key belum beres); `heartbeatRequired = true` memaksanya.
+
+**Safety anti relaunch-spam**: freeze-relaunch selalu di-gate status login — clone tanpa
+akun login tidak pernah di-relaunch paksa.
+
 **Kolom `HB`** di tiap baris = bukti visual apakah server Termux benar-benar menerima
 sinyal dari clone tsb, cocok 1-1 per package:
 
 - `12s` hijau — sinyal terakhir baru
 - `1m30s` kuning — sinyal lama (jalan menuju Freeze)
-- `-` — belum pernah ada sinyal untuk clone ini (script belum jalan / belum pernah terima)
+- `-` — belum pernah ada sinyal untuk clone ini (server menerima sinyal lain, tapi bukan dari clone ini)
+- `?` **merah** — heartbeat ON tapi **key clone ini belum ter-resolve** (username gagal resolve dari cookie). Jangan dianggap "OFF": fitur aktif, hanya identitas clone yang tidak ketahui. Diagnostik: `lua tools/username_diag.lua`.
 - `OFF` — fitur heartbeat dimatikan di config
 
 Di bawah tabel ada baris status server: `HB server: ON :8080 (pid 1234) | N key terhubung` —
 kalau belum `ON`, cek log `data/heartbeat_server.log`. Kalau `-` semua padahal `ON`,
-berarti script in-game belum ter-eksekusi (Delta key / nama file).
+berarti script in-game belum ter-eksekusi (Delta key / nama file). Kalau ada baris merah
+`N clone username belum ter-resolve`, jalankan diagnostik:
+
+```sh
+lua tools/username_diag.lua
+```
+
+Script itu mencetak, per package: apakah data-dir ada, apakah token `.ROBLOSECURITY`
+ketemu (panjang + bagian depan disensor), hasil mentah API `/users/authenticated`, dan
+hasil scan lokal — jadi titik gagal username langsung kelihatan (jangan berharap status
+benar kalau key-nya masih `?`). Semua path baca&log sudah absolut, jadi hasil konsisten
+walau `main.lua` dijalankan dari folder mana pun.
 
 > **Deteksi no-login kini lebih ketat**: validasi token asli (`WARNING:-DO-NOT-SHARE!…`)
 > ditambah cross-check API Roblox (`/users/authenticated`). Kalau deteksi gagal total

@@ -321,6 +321,21 @@ Initial Project
 - **Config** (`config.lua`+`template.lua`): `heartbeat = { enabled=false, host, port=8080, timeout=30, statePath }` + per-instance optional `heartbeatKey`. **Default off** → NOL perubahan perilaku sampai lo on-kan & pasang script in-game.
 - **Docs**: `docs/heartbeat.md` (HTTP-based, koreksi HttpService-vs-request, cara pasang & troubleshooting); README feature list + file tree updated.
 
+## v0.7.13 — Username dijamin resolve + server-first (strict) + fix path
+
+- **Fix bug path absolut** (`managers/heartbeat.lua` + `managers/username.lua`): `readState` dan log username sekarang pakai `rootAbs()` (path absolut) — sebelumnya `data/...` relatif ke cwd, jadi kalau `main.lua` dijalankan dari folder lain (bukan via `sh run.sh` yang `cd ~/rejoin`) state file yang dibaca beda dari yang ditulis server → kolom HB selamanya `-` padahal server `ON`. Sekarang konsisten apa pun cwd.
+- **Username terjamin dari awal** (`managers/username.lua`):
+  - Regex `extractToken` diperluas: token `.ROBLOSECURITY` (`WARNING:-DO-NOT-SHARE!…`) kini mengunci **semua** karakter payload (base64url + `+` `/` `|` `-` `.` `=`), tidak lagi terpotong di `+`/`/` (potongan token dulu → API 401 → username `nil`). Tambah fallback token bare `_|…` tanpa marker WARNING (clone termodifikasi).
+  - `Username.prefetch` retry 3× dengan penalti 1 dtk; setiap retry menghapus cache negatif supaya benar-benar scan ulang (bukan kena `TTL_FAIL` semu).
+  - `tools/username_diag.lua` (baru): diagnostik per package — dir ada?, token ketemu (panjang + disensor), hasil mentah API `/users/authenticated`, hasil scan lokal, `Username.get`/`apiName`. Titik gagal langsung kelihatan, tidak ditelan pcall.
+- **Dashboard** (`managers/status.lua`): heartbeat ON tapi key belum ter-resolve → kolom `HB` tampil `?` **merah** (bukan `-` yang bisa disalahartikan) + footer merah `N clone username belum ter-resolve (cek data/username_scan.log / lua tools/username_diag.lua)`.
+- **Server-first (strict)**: config baru `heartbeat.strict` (default true), `heartbeat.noSignalGrace` (default 180 dtk), dan override per instance `heartbeatRequired` (true/false/nil).
+  - strict + server ON: clone yang diperolehkan kirim sinyal (key ter-resolve + login + proses hidup) tapi diam > `noSignalGrace` → `Freeze` → recovery 5 menit (sinyal memang wajib untuk clone itu).
+  - Prasyarat belum lengkap (key nil / logout / proses mati / server OFF) → **tidak** di-Freeze; status jatuh balik ke RSS safety (`Ingame`/`Offline`/`NoLogin`) — anti relaunch-spam selama key Delta belum aktif.
+  - `Heartbeat.strictFor(inst)`, `Heartbeat.keyFor(inst)`, `Heartbeat.noSignalGrace()` baru di `managers/heartbeat.lua`.
+- **Refactor** (`managers/status.lua`): bukti proses (isRunning/isActive/RSS) dihitung sekali di atas dan dipakai bersama oleh cabang strict-heartbeat & klasifier RSS (hemat panggilan `su` tiap siklus).
+- **Docs**: `docs/heartbeat.md` — babak mode strict + kolom `?` + cara pakai `username_diag.lua`; README feature bullets.
+
 ## v0.7.12 — Status jujur: Ingame vs Running, kolom HB, no-login diperkuat
 
 - **Semantik status dipecah** (`managers/status.lua`):

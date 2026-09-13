@@ -47,6 +47,11 @@ return {
         port = 8080,
         timeout = 30,
         statePath = "data/heartbeat_state.txt",
+        strict = false,
+        -- strict=true (server-first) hanya aman SETELAH key Delta aktif: clone yang
+        -- wajib kirim sinyal tapi diam > noSignalGrace di-Freeze. Selama executor
+        -- belum bisa execute, biarkan false (status berhenti di Ingame, no relaunch-spam).
+        noSignalGrace = 180,
     },
     instances = {
         [1] = {

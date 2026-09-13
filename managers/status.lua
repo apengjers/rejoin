@@ -131,6 +131,20 @@ function Status.check(instance)
         return s.status
     end
 
+    -- Process evidence (shared by the heartbeat-strict branch and the RSS classifier):
+    -- a force-close leaves a low-RSS stub process alive (~188 MB vs ~1 GB for a
+    -- running clone), so "exists but below threshold" means the UI is gone.
+    local procExists = false
+    local active = false
+    if pkg then
+        local okP, resP = pcall(function() return APK.isRunning(pkg) end)
+        procExists = okP and resP
+        local okA, resA = pcall(function() return APK.isActive(pkg) end)
+        active = okA and resA
+    end
+    local rssKb = pkg and APK.getRSSinKB(pkg) or -1
+    s.rssKb = rssKb
+
     -- Heartbeat override (authoritative when enabled): the in-game script signals it
     -- is alive, so a fresh signal proves the clone is actually executing and a missing
     -- one means the game is frozen — regardless of RSS/proc readings.
@@ -144,6 +158,7 @@ function Status.check(instance)
                 s.stuckSince = nil
                 s.healthySince = nil
                 s.forceRunning = nil
+                s.silentSince = nil
                 return s.status
             elseif loggedIn == false then
                 -- Signal gone but no account is logged in: treat as idle, never freeze.
@@ -151,6 +166,7 @@ function Status.check(instance)
                 s.stuckSince = nil
                 s.healthySince = nil
                 s.forceRunning = nil
+                s.silentSince = nil
                 return s.status
             else
                 -- Signal expired -> frozen; start the relaunch clock (freezeTimeout).
@@ -158,24 +174,44 @@ function Status.check(instance)
                 if not s.stuckSince then s.stuckSince = now end
                 s.healthySince = nil
                 s.forceRunning = nil
+                s.silentSince = nil
                 return s.status
+            end
+        elseif Heartbeat.strictFor(instance) then
+            -- Server-first (strict), belum pernah ada sinyal: kalau server ON dan clone
+            -- ini DIHARAPKAN ngirim sinyal (key ter-resolve + login aktif + proses hidup)
+            -- tapi sudah diam > noSignalGrace -> Freeze (recovery/relaunch). Kalau
+            -- prasyaratnya belum lengkap (key nil / logout / proses mati / server OFF)
+            -- timer tidak dijalankan -> RSS safety yang decide (Ingame/Offline/NoLogin).
+            if not active then
+                s.silentSince = nil
+            else
+                local serverUp = false
+                pcall(function() serverUp = Heartbeat.serverInfo().running == true end)
+                local keyKnown = Heartbeat.keyFor(instance) ~= nil
+                local loggedIn = Auth.isLoggedIn(instance)
+                if serverUp and keyKnown and loggedIn == true then
+                    if not s.silentSince then s.silentSince = now end
+                    if (now - s.silentSince) >= Heartbeat.noSignalGrace() then
+                        s.status = "freeze"
+                        if not s.stuckSince then s.stuckSince = now end
+                        s.healthySince = nil
+                        s.forceRunning = nil
+                        return s.status
+                    end
+                    -- Masih dalam grace window: proses hidup tapi server belum pernah
+                    -- dengar -> jujur "ingame" (bukan "running"), nolak utk di-relaunch.
+                    s.status = "ingame"
+                    s.stuckSince = nil
+                    s.healthySince = nil
+                    s.forceRunning = nil
+                    return s.status
+                else
+                    s.silentSince = nil
+                end
             end
         end
     end
-
-    local procExists = false
-    local active = false
-    if pkg then
-        -- Health is decided from the RSS threshold (isActive): a force-close leaves a
-        -- low-RSS stub process alive (~188 MB vs ~1 GB for a running clone), so a process
-        -- that exists but stays below the threshold means its UI is gone.
-        local okP, resP = pcall(function() return APK.isRunning(pkg) end)
-        procExists = okP and resP
-        local okA, resA = pcall(function() return APK.isActive(pkg) end)
-        active = okA and resA
-    end
-    local rssKb = pkg and APK.getRSSinKB(pkg) or -1
-    s.rssKb = rssKb
 
     if not procExists then
         -- offline: nothing running
@@ -453,6 +489,11 @@ function Status.printSummary(instances)
                             hbText = string.format("%dm%ds", math.floor(age / 60), age % 60)
                         end
                         hbColor = age <= thr and C.green or C.yellow
+                    elseif info.key == nil then
+                        -- Key (heartbeatKey/username) belum ter-resolve: kita tak tahu
+                        -- nama key yang harus dicocokkan -> "?" merah, bukan "-" yang
+                        -- bisa disalahartikan "server nggak nerima sinyal".
+                        hbText, hbColor = "?", C.red
                     else
                         hbText, hbColor = "-", C.dim
                     end
@@ -480,6 +521,21 @@ function Status.printSummary(instances)
     end)
     table.insert(sb, " ")
     table.insert(sb, C.dim .. hbServer .. C.reset)
+    -- Peringatan merah apabila ada clone yang heartbeat ON tapi key belum ter-resolve.
+    local unresolved = 0
+    for _, inst2 in ipairs(instances or {}) do
+        pcall(function()
+            local info2 = Heartbeat.info(inst2)
+            if info2 and info2.enabled and not info2.key then
+                unresolved = unresolved + 1
+            end
+        end)
+    end
+    if unresolved > 0 then
+        table.insert(sb, C.red .. string.format(
+            "%d clone username belum ter-resolve (cek data/username_scan.log / lua tools/username_diag.lua)",
+            unresolved) .. C.reset)
+    end
     table.insert(sb, C.dim .. "(tekan Ctrl+C untuk berhenti)" .. C.reset)
 
     -- Reposition on top of the previous frame if we already drew one, then redraw.

@@ -21,6 +21,8 @@ local conf = {
     endpoint = "/heartbeat",
     timeout = 30,
     statePath = "data/heartbeat_state.txt",
+    strict = true,           -- server-first: klaim "Running" hanya dari sinyal
+    noSignalGrace = 180,     -- detik proses hidup tanpa sinyal sebelum di-Freeze (strict)
 }
 
 local CACHE_TTL = 5       -- seconds between state-file reads
@@ -47,6 +49,8 @@ function Heartbeat.configure(c)
     conf.endpoint = c.endpoint or "/heartbeat"
     conf.timeout  = tonumber(c.timeout) or 30
     conf.statePath = c.statePath or "data/heartbeat_state.txt"
+    conf.strict = c.strict ~= false  -- default true
+    conf.noSignalGrace = tonumber(c.noSignalGrace) or 180
     pidPath = rootAbs("data/heartbeat_server.pid")
 end
 
@@ -56,7 +60,7 @@ local function readState()
         return stateCache.data
     end
     local data = {}
-    local f = io.open(conf.statePath, "r")
+    local f = io.open(rootAbs(conf.statePath), "r")
     if f then
         local s = f:read("*a")
         f:close()
@@ -112,6 +116,28 @@ end
 -- Current heartbeat timeout (seconds) — used by the dashboard to color HB cells.
 function Heartbeat.timeout()
     return conf.timeout
+end
+
+-- No-signal grace window (seconds) for strict mode: how long a process may stay
+-- alive without EVER sending a heartbeat before it is classified Freeze.
+function Heartbeat.noSignalGrace()
+    return conf.noSignalGrace
+end
+
+-- Whether an instance is held to the strict server-first rule. A per-instance
+-- `heartbeatRequired` (true/false) overrides the global `heartbeat.strict` flag.
+function Heartbeat.strictFor(inst)
+    if inst and inst.heartbeatRequired ~= nil then
+        return inst.heartbeatRequired == true
+    end
+    return conf.strict
+end
+
+-- Resolve this instance's heartbeat identity (heartbeatKey -> username). Returns the
+-- key string or nil. Nil means "the server would never match a signal to this clone",
+-- so strict mode holds its Freeze judgment on that clone (see Status.check).
+function Heartbeat.keyFor(inst)
+    return resolveKey(inst)
 end
 
 -- Per-instance heartbeat readout for the dashboard:
