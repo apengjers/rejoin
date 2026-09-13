@@ -2,6 +2,7 @@ local Logger = require("core.logger")
 local APK = require("managers.apk")
 local Auth = require("managers.auth")
 local Username = require("managers.username")
+local Heartbeat = require("managers.heartbeat")
 local Shell = require("utils.shell")
 
 local Status = {}
@@ -118,6 +119,38 @@ function Status.check(instance)
     -- that status until it finishes (don't let the normal classifier override it).
     if s.status == "recovery" or s.status == "resetting" or s.startingOverride then
         return s.status
+    end
+
+    -- Heartbeat override (authoritative when enabled): the in-game script signals it
+    -- is alive, so a fresh signal proves the clone is actually running and a missing
+    -- one means the game is frozen — regardless of RSS/proc readings.
+    if Heartbeat.isEnabled() then
+        local alive, stale, seen = Heartbeat.evaluate(instance)
+        if seen then
+            local loggedIn = Auth.isLoggedIn(instance)
+            if alive then
+                -- Script says alive -> definitely running.
+                s.status = "ingame"
+                s.stuckSince = nil
+                s.healthySince = nil
+                s.forceRunning = nil
+                return s.status
+            elseif loggedIn == false then
+                -- Signal gone but no account is logged in: treat as idle, never freeze.
+                s.status = "nologin"
+                s.stuckSince = nil
+                s.healthySince = nil
+                s.forceRunning = nil
+                return s.status
+            else
+                -- Signal expired -> frozen; start the relaunch clock (freezeTimeout).
+                s.status = "freeze"
+                if not s.stuckSince then s.stuckSince = now end
+                s.healthySince = nil
+                s.forceRunning = nil
+                return s.status
+            end
+        end
     end
 
     local procExists = false

@@ -311,6 +311,16 @@ Initial Project
 - `managers/monitor.lua`: `Username.reset()` saat monitor start + `Username.prefetch(instances)` sekali sebelum loop utama (dashboard pertama sudah menampilkan username, tanpa block di tiap draw).
 - `config/template.lua`: contoh instance kini punya field opsional `usernamePath = ""` + komentar. README fitur / monitoring / file tree diperbarui.
 
+## v0.7.11 — Heartbeat monitoring (HTTP)
+
+- **HTTP-based heartbeat**: clone di dalam game mengirim sinyal "masih hidup" (POST `/heartbeat`) ke server kecil di Termux (`scripts/heartbeat_server.py`, Python stdlib tanpa Flask), secara otomatis dimatikan & dijalankan oleh Rejoin saat monitor start/stop. Sinyal kadaluarsa > `heartbeat.timeout` (30 dtk) → status `Freeze` → relaunch setelah `freezeTimeout` (5 menit) via recovery lama tanpa ubahan.
+- **`managers/heartbeat.lua` (baru)**: baca state file (line `key=epoch`, no JSON/cjson dependency), `evaluate(inst)` → `(alive, stale, seen)` berdasarkan umur mtime vs timeout; `start()`/`stop()` kelola server via su (path absolut). Key auto-resolve `instance.heartbeatKey` → fallback `Username.get(inst)`.
+- **Server (`scripts/heartbeat_server.py`)**: stdlib `http.server.ThreadingHTTPServer`, bind `127.0.0.1:<port>`, POST `/heartbeat` terima JSON `{app, acc}` → tulis state file atomik (tmp+replace); GET `/health` untuk debug. Server hidup saat monitor start, mati saat monitor stop; pid lama di-kill sebelum start baru (file `data/heartbeat_server.pid`).
+- **In-game script (`scripts/heartbeat.lua`)**: sample siap Add via menu AutoExecute (tiap launch Delta jalanin script); mencoba beberapa bentuk argumen `request`/`http_request`; identitas = `game.Players.LocalPlayer.Name`. Executor Delta WAJIB punya `request()/http_request()` raw — `HttpService:PostAsync` tidak bisa (di-proxy server Roblox, bukan device).
+- **`managers/status.lua`**: override heartbeat **sebelum** logika RSS/proc: `seen & alive` → `ingame` (Running); `seen & stale & login` → `freeze` (+`stuckSince`, 5 menit relaunch); tidak login → `NoLogin` (idle); belum-pernah → fallback RSS lama. **Bulat**: healthy di monitor = `(RSS aktif) OR (heartbeat alive)` → tidak dobel relaunch.
+- **Config** (`config.lua`+`template.lua`): `heartbeat = { enabled=false, host, port=8080, timeout=30, statePath }` + per-instance optional `heartbeatKey`. **Default off** → NOL perubahan perilaku sampai lo on-kan & pasang script in-game.
+- **Docs**: `docs/heartbeat.md` (HTTP-based, koreksi HttpService-vs-request, cara pasang & troubleshooting); README feature list + file tree updated.
+
 ## Upcoming
 
 - Shell Wrapper

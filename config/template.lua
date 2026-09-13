@@ -50,6 +50,25 @@ return {
     -- Delta mod: /sdcard/Delta/Autoexecute (internal storage, tidak perlu root).
     appAutoExecutePath = "/sdcard/Delta/Autoexecute",
 
+    -- Heartbeat (HTTP): clone di dalam game kirim POST /heartbeat tiap 10 detik ke
+    -- server kecil di Termux (scripts/heartbeat_server.py). Server hanya menerima &
+    -- mencatat timestamp ke statePath (di-baca monitor tiap siklus).
+    --   - Tidak ada sinyal > `timeout` detik  => status Freeze, relaunch setelah
+    --     `freezeTimeout` (5 menit) via recovery biasa.
+    --   - Key sinyal = username akun clone (auto, dari cookie) ATAU per-instance
+    --     `heartbeatKey` bila field itu diisi.
+    --   - WAJIB executor Delta punya fungsi raw `request()/http_request`
+    --     (HttpService:PostAsync TIDAK bisa — di-proxy server Roblox).
+    --   - enabled=false (default) => NOL perubahan perilaku: monitor jalan seperti
+    --     biasa (berbasis RSS), server tidak dinyalakan.
+    heartbeat = {
+        enabled = false,
+        host = "127.0.0.1",
+        port = 8080,
+        timeout = 30,
+        statePath = "data/heartbeat_state.txt",
+    },
+
     -- "Launch All" launches clones ONE AT A TIME, waiting for each to reopen before
     -- starting the next (so floating-window clones each get a chance to appear).
     -- launchWaitInterval: how often (s) to poll for the process while waiting.
@@ -80,7 +99,11 @@ return {
             privateServer = "https://www.roblox.com/games/107778070777162/Steal-An-Egg",
             -- (optional) path to a file whose first line is this clone's Roblox username;
             -- when blank the monitor auto-resolves it via the Roblox API + ROBLOSECURITY cookie.
-            usernamePath = ""
+            usernamePath = "",
+            -- (optional) heartbeat identity for this clone. Blank = the resolved username
+            -- is used. Set it to a fixed string and use the SAME key in the in-game
+            -- heartbeat script to make matching fully deterministic.
+            heartbeatKey = ""
         }
     }
 }

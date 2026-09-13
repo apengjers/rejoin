@@ -18,6 +18,7 @@ Rejoin Engine adalah tools otomatisasi berbasis **Lua** yang berjalan di **Termu
 - **Monitor** — loop tunggal, cek tiap instance bergantian. Jika satu instance mati, hanya instance itu yang di-recovery; instance lain tetap diproses.
 - **Live status per instance** — monitor menampilkan status tiap instance (`offline`, `starting`, `ingame`, `nologin`, `stuck`, `freeze`, `recovery`) setiap siklus.
 - **Username display** — dashboard monitoring menampilkan **username Roblox** di tiap baris instance (mis. `com.apengjers.v3 (apengjers)`). Di-resolve otomatis dari token `.ROBLOSECURITY` via API Roblox (`users.roblox.com`). Hasil di-cache per instance (600 detik). Bisa di-override per-instance lewat `usernamePath` (path file yang baris pertamanya berisi username). Bukti scan tersimpan di `data/username_scan.log`.
+- **Heartbeat monitoring (HTTP)** — clone di dalam game kirim sinyal "masih hidup" tiap 10 detik ke server kecil di Termux (`scripts/heartbeat_server.py`, Python stdlib, auto-start/stop oleh monitor). Tidak ada sinyal > `heartbeat.timeout` (30 dtk) → status **Freeze** → relaunch setelah 5 menit. Matching per-package via username akun (atau `heartbeatKey`). Menggunakan `request()` raw executor (bukan `HttpService`, yang di-proxy server Roblox). Detail: `docs/heartbeat.md`. **Default off** — tidak mengubah perilaku sampai diaktifkan.
 - **Auto relaunch freeze** — app yang freeze/stuck lebih dari `freezeTimeout` (default 300 detik / 5 menit) otomatis di-force-stop & di-relaunch.
 - **RSS-based health** — clone dideteksi benar-benar jalan (bukan sekadar proses hidup) lewat RSS ≥ `minRss` (default 200 MB). Clone yang di-close (stub RSS rendah) otomatis di-relaunch.
 - **Skip restart jika belum login** — clone yang **belum punya akun Roblox login** dan RSS rendah dianggap idle (status `NoLogin`), tidak pernah di-force-relaunch apapun status/kejadiannya (login screen wajar RSS kecil). Deteksi otomatis dengan **scan recursive** token `.ROBLOSECURITY` di direktori data clone (root) — work untuk clone Roblox Lite/mod, bukan cuma `app_webview`. Lihat `Auth` / `cookiePath`.
@@ -230,7 +231,11 @@ rejoin/
 │   ├── optimizer.lua           # renice/ionice deprioritasi clone
 │   ├── autoexecute.lua         # AutoExecute: kelola langsung folder app (list/add/edit/delete)
 │   ├── auth.lua                # deteksi login via cookie (.ROBLOSECURITY)
-│   └── username.lua            # resolve username per clone (via cookie + API Roblox)
+│   ├── username.lua            # resolve username per clone (via cookie + API Roblox)
+│   └── heartbeat.lua           # heartbeat HTTP: baca state, kendalikan server (start/stop)
+├── scripts/
+│   ├── heartbeat_server.py     # server penerima sinyal (Python stdlib, no-dep)
+│   └── heartbeat.lua           # script in-game (Delta): kirim sinyal tiap 10 detik
 ├── utils/
 │   ├── shell.lua               # eksekusi shell (dengan timeout anti-hang)
 │   ├── probe_log.lua           # auto-debug per siklus -> launch.log
@@ -238,7 +243,8 @@ rejoin/
 │   ├── file.lua, json.lua, timer.lua
 └── data/
     ├── rejoin.log              # log runtime
-    └── username_scan.log       # bukti/evidence scan username tiap sesi monitoring
+    ├── username_scan.log       # bukti/evidence scan username tiap sesi monitoring
+    └── heartbeat_state.txt     # state heartbeat (ditulis server, dibaca monitor)
 ```
 
 ---

@@ -3,6 +3,7 @@ local Timer = require("utils.timer")
 local Status = require("managers.status")
 local Auth = require("managers.auth")
 local Username = require("managers.username")
+local Heartbeat = require("managers.heartbeat")
 local ProbeLog = require("utils.probe_log")
 
 local Monitor = {}
@@ -130,6 +131,8 @@ function Monitor.start(conf, opts)
     -- Warm the username cache once right away so the launch/dashboard draws hit the
     -- cache instead of firing a Roblox API call on every frame.
     pcall(function() Username.prefetch(instanceManager.getAll()) end)
+    Heartbeat.configure(conf and conf.heartbeat or {})
+    Heartbeat.start()
     installSignalHandler()
     -- Full-screen dashboard: hide console log lines while monitoring so they don't push
     -- the dashboard around (log lines still go to the log file).
@@ -205,6 +208,13 @@ function Monitor.start(conf, opts)
                 local ok, res = pcall(function() return apkManager.isActive(pkg) end)
                 healthy = ok and res
             end
+            -- A live heartbeat also proves the clone is genuinely running (overrides
+            -- the RSS reading, e.g. while a floating window is minimized).
+            if not healthy then
+                pcall(function()
+                    if Heartbeat.isEnabled() and Heartbeat.alive(inst) then healthy = true end
+                end)
+            end
 
             if healthy then
                 Logger.debug(string.format("Monitor: instance healthy: %s", name))
@@ -255,6 +265,9 @@ function Monitor.start(conf, opts)
 
         Timer.sleepInterruptible(interval, function() return not running end)
     end
+
+    -- Stop the heartbeat server before restoring console.
+    pcall(function() Heartbeat.stop() end)
 
     -- Monitor stopped: restore console output and cursor, then leave a clean line.
     Logger.setConsoleVisible(true)

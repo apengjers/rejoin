@@ -1,0 +1,21 @@
+# runtime artifacts
+rejoin.log
+launch.log
+*.log
+*.pid
+data/
+
+# python
+__pycache__/
+*.py[cod]
+
+# scratch / user docs
+debug_probe.lua
+errorlogs.md
+examplecli.txt
+reconnect.md
+setup.md
+
+# OS
+.DS_Store
+Thumbs.db
