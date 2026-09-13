@@ -85,12 +85,33 @@ dan pakai key yang sama di script.)
 
 ## Perilaku status
 
+Semantik dipakai **selalu**, terlepas `heartbeat.enabled` on/off:
+
 | Kondisi | Status di dashboard |
 |---|---|
-| Sinyal segar ≤30s | `Running` (hijau) |
+| Proses hidup (RSS aktif) TANPA sinyal / heartbeat off | `Ingame` (hijau) — game jalan, eksekusi belum dikonfirmasi |
+| Sinyal segar ≤30s (eksekusi terkonfirmasi) | `Running` (hijau) |
 | Sinyal kadaluarsa (>30s) & akun login | `Freeze` (kuning) → relaunch 5 menit |
-| Sinyal berhenti & akun tidak login | `NoLogin` (diam, tidak pernah relaunch) |
-| Belum pernah ada sinyal | pakai logika RSS/proc lama |
+| Sinyal berhenti & akun tidak login | `NoLogin` (dim, tidak pernah relaunch) |
+| Belum pernah ada sinyal | `Ingame` (kondisi pertama) |
+
+**Kolom `HB`** di tiap baris = bukti visual apakah server Termux benar-benar menerima
+sinyal dari clone tsb, cocok 1-1 per package:
+
+- `12s` hijau — sinyal terakhir baru
+- `1m30s` kuning — sinyal lama (jalan menuju Freeze)
+- `-` — belum pernah ada sinyal untuk clone ini (script belum jalan / belum pernah terima)
+- `OFF` — fitur heartbeat dimatikan di config
+
+Di bawah tabel ada baris status server: `HB server: ON :8080 (pid 1234) | N key terhubung` —
+kalau belum `ON`, cek log `data/heartbeat_server.log`. Kalau `-` semua padahal `ON`,
+berarti script in-game belum ter-eksekusi (Delta key / nama file).
+
+> **Deteksi no-login kini lebih ketat**: validasi token asli (`WARNING:-DO-NOT-SHARE!…`)
+> ditambah cross-check API Roblox (`/users/authenticated`). Kalau deteksi gagal total
+> (root/grep error), clone **dianggap belum login** → tidak pernah di-relaunch, dengan
+> peringatan di log. Hanya ketika API tidak terjangkau (offline) determinasi tetap
+> dianggap login supaya clone beku tetap bisa ke-relaunch.
 
 > **Catatan penting:** kalau script di dalam game berhenti (bug/kick) tapi game-nya
 > sendiri normal, clone **tetap** di-*freeze* & di-*relaunch* (sesuai permintaan: 30s

@@ -46,6 +46,30 @@ local function resolveLocal(base)
     return val
 end
 
+-- Authenticate the clone's cookie against the Roblox API and return its username.
+-- Returns (name, state) where:
+--   "ok"     -> a real session; `name` is the account username
+--   "unauth" -> no (valid) token, or the API rejected it (401/stale cookie)
+--   "fail"   -> network/probe error; inconclusive
+-- Used by Auth.isLoggedIn as the strong cross-check (API never lies about a cookie).
+function Username.apiName(instance)
+    if not instance then return nil, "fail" end
+    local pkg = instance.package
+    if not pkg then return nil, "fail" end
+    local base = "/data/data/" .. pkg
+    local token = extractToken(base)
+    if not token then return nil, "unauth" end
+    local cmd = "curl -s --max-time 3 -H 'Cookie: .ROBLOSECURITY=" .. token
+        .. "' https://users.roblox.com/v1/users/authenticated"
+    local ok, _, out = pcall(function() return Shell.exec(cmd) end)
+    if not ok or not out or out == "" or out == "(dry-run)" then
+        return nil, "fail"
+    end
+    local name = out:match('"name"%s*:%s*"([^"]*)"') or out:match('"displayName"%s*:%s*"([^"]*)"')
+    if name then return name, "ok" end
+    return nil, "unauth"
+end
+
 -- Reset the username cache and (re)create the evidence log.
 function Username.reset()
     cache = {}

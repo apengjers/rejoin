@@ -109,6 +109,54 @@ function Heartbeat.alive(inst)
     return conf.enabled and seen and a
 end
 
+-- Current heartbeat timeout (seconds) — used by the dashboard to color HB cells.
+function Heartbeat.timeout()
+    return conf.timeout
+end
+
+-- Per-instance heartbeat readout for the dashboard:
+--   { enabled=false }                          heartbeat off
+--   { enabled=true, key=nil, seen=false }      no key resolved for this instance
+--   { enabled=true, key=k, seen=false }        never received a signal for key k
+--   { enabled=true, key=k, seen=true, age=a }  last signal `a` seconds ago
+function Heartbeat.info(inst)
+    if not conf.enabled then return { enabled = false } end
+    local key = resolveKey(inst)
+    if not key then return { enabled = true, key = nil, seen = false } end
+    local state = readState()
+    local last = state[key]
+    if not last then return { enabled = true, key = key, seen = false } end
+    return { enabled = true, key = key, seen = true, age = os.time() - last }
+end
+
+-- Server readout for the dashboard footer. Cached briefly so the pidfile read is cheap.
+local serverInfoCache = { at = 0, data = nil }
+function Heartbeat.serverInfo()
+    if not conf.enabled then return { running = false } end
+    local now = os.time()
+    if serverInfoCache.data and (now - serverInfoCache.at) < 2 then
+        return serverInfoCache.data
+    end
+    local info = { running = false, port = conf.port, pid = nil, keyCount = 0 }
+    local f = io.open(pidPath, "r")
+    if f then
+        local raw = f:read("*a")
+        f:close()
+        local pid = raw:match("%d+")
+        if pid then
+            info.running = true
+            info.pid = pid
+        end
+    end
+    if info.running then
+        local n = 0
+        for _ in pairs(readState()) do n = n + 1 end
+        info.keyCount = n
+    end
+    serverInfoCache = { at = now, data = info }
+    return info
+end
+
 -- Start the Python heartbeat server in the background (spawned via su, so use
 -- absolute paths — su's cwd is /, not $HOME/rejoin). Kills any stale pid first.
 function Heartbeat.start()

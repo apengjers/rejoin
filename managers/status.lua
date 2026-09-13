@@ -7,9 +7,10 @@ local Shell = require("utils.shell")
 
 local Status = {}
 
--- Per-instance runtime state.
--- instanceId -> {
---   status        = "offline"|"starting"|"ingame"|"stuck"|"freeze"|"nologin"|"recovery"
+-- Per-instance runtime state, keyed by PACKAGE name (unique per clone, so a wrong id
+-- never bleeds into another clone's state — status dibaca per package 1-1).
+-- package -> {
+--   status        = "offline"|"starting"|"ingame"|"running"|"stuck"|"freeze"|"nologin"|"recovery"
 --   healthySince  = timestamp when the process was first seen running
 --   stuckSince    = timestamp when stuck/freeze was first detected (5-min timeout base)
 --   anrSeen       = last logcat sequence id that reported an ANR for this package
@@ -32,16 +33,24 @@ function Status.reset()
     states = {}
 end
 
--- Mark an instance as currently being recovered (so the monitor shows "recovery").
-function Status.beginRecovery(id)
-    local s = states[id] or {}
-    s.status = "recovery"
-    s.stuckSince = nil
-    states[id] = s
+-- Normalize the identity used as the state key: instances are keyed by package (unique
+-- per clone) so a wrong id never bleeds into another clone's state. Accepts an instance
+-- table or a raw key for safety.
+local function keyOf(x)
+    return type(x) == "table" and (x.package or x.id) or x
 end
 
-function Status.endRecovery(id)
-    local s = states[id]
+-- Mark an instance as currently being recovered (so the monitor shows "recovery").
+function Status.beginRecovery(inst)
+    local k = keyOf(inst)
+    local s = states[k] or {}
+    s.status = "recovery"
+    s.stuckSince = nil
+    states[k] = s
+end
+
+function Status.endRecovery(inst)
+    local s = states[keyOf(inst)]
     if s and s.status == "recovery" then
         s.status = nil
         -- A successful recovery means the app is genuinely running again; skip the
@@ -52,16 +61,17 @@ end
 
 -- Force-hold an instance in "starting" while it is being launched/loaded (used by the
 -- Menu 1 sequential launch flow). Cleared with Status.endStarting when it is up.
-function Status.beginStarting(id)
-    local s = states[id] or {}
+function Status.beginStarting(inst)
+    local k = keyOf(inst)
+    local s = states[k] or {}
     s.startingOverride = true
     s.status = "starting"
     s.stuckSince = nil
-    states[id] = s
+    states[k] = s
 end
 
-function Status.endStarting(id)
-    local s = states[id]
+function Status.endStarting(inst)
+    local s = states[keyOf(inst)]
     if s then
         s.startingOverride = nil
     end
@@ -69,15 +79,16 @@ end
 
 -- Mark an instance as currently being reset (force-stopped / relaunched / joined), so the
 -- monitor shows "Resetting" until the operation finishes. Mirrors recovery handling.
-function Status.beginResetting(id)
-    local s = states[id] or {}
+function Status.beginResetting(inst)
+    local k = keyOf(inst)
+    local s = states[k] or {}
     s.status = "resetting"
     s.stuckSince = nil
-    states[id] = s
+    states[k] = s
 end
 
-function Status.endResetting(id)
-    local s = states[id]
+function Status.endResetting(inst)
+    local s = states[keyOf(inst)]
     if s and s.status == "resetting" then
         s.status = nil
     end
@@ -109,11 +120,10 @@ end
 -- Update the status of a single instance based on its process state and ANR logs.
 -- Returns the current status string for convenience.
 function Status.check(instance)
-    local id = instance.id
     local pkg = instance.package
     local now = os.time()
-    local s = states[id] or {}
-    states[id] = s
+    local s = states[pkg] or {}
+    states[pkg] = s
 
     -- If currently being recovered, reset, or held in a forced "starting" state, keep
     -- that status until it finishes (don't let the normal classifier override it).
@@ -122,15 +132,15 @@ function Status.check(instance)
     end
 
     -- Heartbeat override (authoritative when enabled): the in-game script signals it
-    -- is alive, so a fresh signal proves the clone is actually running and a missing
+    -- is alive, so a fresh signal proves the clone is actually executing and a missing
     -- one means the game is frozen — regardless of RSS/proc readings.
     if Heartbeat.isEnabled() then
         local alive, stale, seen = Heartbeat.evaluate(instance)
         if seen then
             local loggedIn = Auth.isLoggedIn(instance)
             if alive then
-                -- Script says alive -> definitely running.
-                s.status = "ingame"
+                -- Script is sending signals -> execution confirmed -> "Running".
+                s.status = "running"
                 s.stuckSince = nil
                 s.healthySince = nil
                 s.forceRunning = nil
@@ -183,8 +193,7 @@ function Status.check(instance)
         --
         -- If the clone has NO logged-in account (Auth.isLoggedIn == false) it is treated
         -- as idle: low RSS is expected, so we mark it "nologin" and never start the
-        -- freeze/relaunch clock. On a failed detection (nil) we fall back to the normal
-        -- freeze handling so existing behavior is preserved.
+        -- freeze/relaunch clock.
         local loggedIn = Auth.isLoggedIn(instance)
         if loggedIn == false then
             s.status = "nologin"
@@ -202,7 +211,7 @@ function Status.check(instance)
 
     -- Process is genuinely active (real memory).
     if s.forceRunning then
-        -- Recovery/relaunch just succeeded: go straight to Running.
+        -- Recovery/relaunch just succeeded: skip the starting grace period.
         s.forceRunning = nil
         s.healthySince = nil
         s.status = "ingame"
@@ -243,8 +252,8 @@ end
 
 -- Whether this instance has been stuck/frozen for at least freezeTimeout seconds.
 -- Returns true when it is time to relaunch.
-function Status.isFreezeTimeout(id)
-    local s = states[id]
+function Status.isFreezeTimeout(inst)
+    local s = states[keyOf(inst)]
     if not s then return false end
     if s.status ~= "freeze" then return false end
     if not s.stuckSince then return false end
@@ -264,7 +273,8 @@ local C = {
 
 -- Human label + color for a status (used by the monitor table).
 local STATUS_UI = {
-    ingame   = { "Running",  C.green },
+    ingame   = { "Ingame",  C.green },
+    running  = { "Running", C.green },
     stuck    = { "Stuck",    C.red },
     freeze   = { "Freeze",   C.yellow },
     recovery = { "Recovery", C.yellow },
@@ -371,15 +381,16 @@ end
 
 function Status.printSummary(instances)
     local LCOL = 33   -- width of the left (Instance) column
+    local HBCOL = 10  -- width of the heartbeat column (sinyal "masih hidup" per clone)
     local RCOL = 23   -- width of the right (Status/Value) column
 
-    local top  = "╭" .. string.rep("─", LCOL) .. "┬" .. string.rep("─", RCOL) .. "╮"
-    local mid  = "├" .. string.rep("─", LCOL) .. "┼" .. string.rep("─", RCOL) .. "┤"
-    local bot  = "╰" .. string.rep("─", LCOL) .. "┴" .. string.rep("─", RCOL) .. "╯"
+    local top  = "╭" .. string.rep("─", LCOL) .. "┬" .. string.rep("─", HBCOL) .. "┬" .. string.rep("─", RCOL) .. "╮"
+    local mid  = "├" .. string.rep("─", LCOL) .. "┼" .. string.rep("─", HBCOL) .. "┼" .. string.rep("─", RCOL) .. "┤"
+    local bot  = "╰" .. string.rep("─", LCOL) .. "┴" .. string.rep("─", HBCOL) .. "┴" .. string.rep("─", RCOL) .. "╯"
 
     -- One body row. `rightColor`, if given, colors the visible right text only so
-    -- every row still aligns on the same column.
-    local function bodyRow(left, rightText, rightColor)
+    -- every row still aligns on the same column. `hbText`/`hbColor` fill the HB cell.
+    local function bodyRow(left, rightText, rightColor, hbText, hbColor)
         local lc = padCell(left, LCOL)
         local rc = padCell(rightText, RCOL)
         if rightColor then
@@ -387,35 +398,69 @@ function Status.printSummary(instances)
             rc = " " .. string.rep(" ", l) .. rightColor .. rightText .. C.reset
                  .. string.rep(" ", (RCOL - 2 - #rightText) - l) .. " "
         end
-        return "│" .. lc .. "│" .. rc .. "│"
+        local hb
+        if hbText then
+            hb = padCell(hbText, HBCOL)
+            if hbColor then
+                local l = math.floor((HBCOL - 2 - #hbText) / 2)
+                hb = " " .. string.rep(" ", l) .. hbColor .. hbText .. C.reset
+                     .. string.rep(" ", (HBCOL - 2 - #hbText) - l) .. " "
+            end
+        else
+            hb = blankCell(HBCOL)
+        end
+        return "│" .. lc .. "│" .. hb .. "│" .. rc .. "│"
     end
 
     local function blankRow()
-        return "│" .. blankCell(LCOL) .. "│" .. blankCell(RCOL) .. "│"
+        return "│" .. blankCell(LCOL) .. "│" .. blankCell(HBCOL) .. "│" .. blankCell(RCOL) .. "│"
     end
 
     local sb = {}
     table.insert(sb, top)
     table.insert(sb, blankRow())
-    table.insert(sb, bodyRow("Instance", "Status"))
+    table.insert(sb, bodyRow("Instance", "Status", nil, "HB", nil))
     table.insert(sb, blankRow())
     table.insert(sb, mid)
 
     if not instances or #instances == 0 then
-        table.insert(sb, bodyRow("(no instances)", "Offline", C.dim))
+        table.insert(sb, bodyRow("(no instances)", "Offline", C.dim, "-", C.dim))
         table.insert(sb, mid)
     else
         for _, inst in ipairs(instances) do
-            local id = inst.id or inst.name or "?"
-            local pkg = inst.package or inst.name or tostring(id)
-            local s = states[id]
+            local pkg = inst.package or inst.name or tostring(inst.id or "?")
+            local s = states[pkg]
             local status = s and s.status or "offline"
             local ui = STATUS_UI[status] or { status, C.dim }
             local label = ui[1] or "Unknown"
             local uname = nil
             pcall(function() uname = Username.get(inst) end)
             local rowText = uname and (pkg .. " (" .. tostring(uname) .. ")") or pkg
-            table.insert(sb, bodyRow(rowText, label, ui[2]))
+
+            -- Heartbeat cell: umur sinyal terakhir bila sudah pernah terima, "-" bila
+            -- belum pernah, "OFF" bila fitur heartbeat mati. Ini bukti visual apakah
+            -- server Termux benar-benar menerima sinyal dari clone tsb.
+            local hbText, hbColor = "-", C.dim
+            pcall(function()
+                local info = Heartbeat.info(inst)
+                if info and info.enabled then
+                    if info.seen and info.age then
+                        local age = info.age
+                        local thr = Heartbeat.timeout() or 30
+                        if age < 60 then
+                            hbText = age .. "s"
+                        else
+                            hbText = string.format("%dm%ds", math.floor(age / 60), age % 60)
+                        end
+                        hbColor = age <= thr and C.green or C.yellow
+                    else
+                        hbText, hbColor = "-", C.dim
+                    end
+                else
+                    hbText, hbColor = "OFF", C.dim
+                end
+            end)
+            table.insert(sb, bodyRow(rowText, label, ui[2], hbText, hbColor))
         end
         table.insert(sb, mid)
     end
@@ -424,8 +469,17 @@ function Status.printSummary(instances)
     table.insert(sb, bodyRow("Storage Available", storageLine() or "--"))
     table.insert(sb, bot)
 
-    -- Footer hint below the table.
+    -- Status server heartbeat + footer hint below the table.
+    local hbServer = "HB server: OFF (aktifkan heartbeat di config)"
+    pcall(function()
+        local info = Heartbeat.serverInfo()
+        if info and info.running then
+            hbServer = string.format("HB server: ON :%d (pid %s) | %d key terhubung",
+                info.port, tostring(info.pid), info.keyCount)
+        end
+    end)
     table.insert(sb, " ")
+    table.insert(sb, C.dim .. hbServer .. C.reset)
     table.insert(sb, C.dim .. "(tekan Ctrl+C untuk berhenti)" .. C.reset)
 
     -- Reposition on top of the previous frame if we already drew one, then redraw.

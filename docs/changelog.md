@@ -321,6 +321,20 @@ Initial Project
 - **Config** (`config.lua`+`template.lua`): `heartbeat = { enabled=false, host, port=8080, timeout=30, statePath }` + per-instance optional `heartbeatKey`. **Default off** → NOL perubahan perilaku sampai lo on-kan & pasang script in-game.
 - **Docs**: `docs/heartbeat.md` (HTTP-based, koreksi HttpService-vs-request, cara pasang & troubleshooting); README feature list + file tree updated.
 
+## v0.7.12 — Status jujur: Ingame vs Running, kolom HB, no-login diperkuat
+
+- **Semantik status dipecah** (`managers/status.lua`):
+  - `running` (label **Running**) = eksekusi script TERKONFIRMASI via heartbeat segar.
+  - `ingame` (label **Ingame**) = proses game hidup (RSS aktif) tapi BELUM ada sinyal / heartbeat off.
+  - Berlaku selalu, tak peduli `heartbeat.enabled`. Sebelum ini keduanya campur jadi "Running" — dashboard tidak pernah menampilkan apakah matra eksekusi beneran aktif.
+- **Kolom `HB` di dashboard** (`printSummary`): umur sinyal terakhir per instance (`12s` hijau / `1m30s` kuning / `-` belum pernah / `OFF` mati) + baris status server di bawah tabel (`HB server: ON :port (pid) | N key terhubung`). Dua-duanya menampilkan bukti visual apakah server Termux benar-benar menerima sinyal Roblox per clone 1-1. API baru di `managers/heartbeat.lua`: `Heartbeat.info(inst)`, `Heartbeat.serverInfo()`, `Heartbeat.timeout()`.
+- **No-login diperkuat** (`managers/auth.lua` + `managers/username.lua`):
+  - Validasi token asli (`WARNING:-DO-NOT-SHARE!…` marker diterapkan, bukan sekadar string `.ROBLOSECURITY`).
+  - Cross-check API Roblox (`Username.apiName`: `/users/authenticated`): API menangkap "ok" (login afirmatif), "unauth" (cookie basi/ditolak), "fail" (offline = tetap dianggap login biar clone beku tetap ke-relaunch).
+  - **Kebijakan indeterminat berubah**: probe gagal (dir/grep/root error) → dianggap **belum login** → tidak pernah di-relaunch, dengan `Logger.warn` supaya kerusakan probe kelihatan. (Sebelumnya nil = tetap dianggap login.)
+- **Check 1-1 per package**: state dashboard kini di-key **package**, bukan `inst.id` (`Status.*` menerima instance; `statuses` map di `monitor.lua`/`probe_log.lua` juga di-key `pkg`) — id bentrok antar instance tidak bisa lagi mencampur status antar clone. Kunci heartbeat tetap prefer `heartbeatKey` (deterministik) → fallback username.
+- **Docs**: `docs/heartbeat.md` tabel semantik + kolom HB + kebijakan no-login baru; README status list.
+
 ## Upcoming
 
 - Shell Wrapper

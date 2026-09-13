@@ -69,7 +69,7 @@ local function runSequentialLaunch(conf)
         local name = tostring(inst.name or id)
         local pkg = inst.package
 
-        Status.beginStarting(id)
+        Status.beginStarting(inst)
         Status.printSummary(instanceManager.getAll())
         Logger.info(string.format("Monitor: launching #%d %s (%s)", i, name, tostring(pkg)))
         ProbeLog.line(string.format("[%s] EVENT launch_begin #%d %s (%s)", os.date("%H:%M:%S"), i, name, tostring(pkg)))
@@ -97,7 +97,7 @@ local function runSequentialLaunch(conf)
             if running then Status.printSummary(instanceManager.getAll()) end
         end
 
-        Status.endStarting(id)
+        Status.endStarting(inst)
         -- New process got a new pid during this launch: deprioritize it now.
         pcall(function() return Optimizer.applyForInstance(inst) end)
         ProbeLog.line(string.format("[%s] EVENT launch_done #%d %s (%s) waited=%ds", os.date("%H:%M:%S"), i, name, tostring(pkg), waited))
@@ -162,14 +162,14 @@ function Monitor.start(conf, opts)
             local status
             local okStatus, resStatus = pcall(function() return Status.check(inst) end)
             status = okStatus and resStatus or "unknown"
-            statuses[id] = status
+            statuses[pkg] = status
 
             -- If frozen/stuck long enough, relaunch the app — UNLESS the clone has no
             -- logged-in account: then low RSS / no activity is expected (it's just sitting
             -- on the login screen), so it must never be force-relaunched.
             local timeToRelaunch = false
             if status == "freeze" then
-                local p_ok, should = pcall(function() return Status.isFreezeTimeout(id) end)
+                local p_ok, should = pcall(function() return Status.isFreezeTimeout(inst) end)
                 timeToRelaunch = p_ok and should
             end
             if timeToRelaunch then
@@ -177,7 +177,7 @@ function Monitor.start(conf, opts)
                     Logger.debug(string.format("Monitor: %s not logged in; skipping relaunch", name))
                 else
                     Logger.warn(string.format("Monitor: instance %s frozen too long; relaunching", name))
-                    Status.beginRecovery(id)
+                    Status.beginRecovery(inst)
                     ProbeLog.line(string.format("[%s] EVENT relaunch_begin %s (%s)", os.date("%H:%M:%S"), name, tostring(pkg)))
                     local r_ok, r_err = pcall(function()
                         return recoveryManager.relaunch(inst)
@@ -191,7 +191,7 @@ function Monitor.start(conf, opts)
                         -- relaunch() restart changes the pid; re-apply deprioritization.
                         pcall(function() return Optimizer.applyForInstance(inst) end)
                     end
-                    Status.endRecovery(id)
+                    Status.endRecovery(inst)
                 end
             end
 
@@ -230,7 +230,7 @@ function Monitor.start(conf, opts)
                 else
                     -- mark as recovering and run recovery (synchronous). This avoids overlapping recoveries.
                     setRecovering(id, true)
-                    Status.beginRecovery(id)
+                    Status.beginRecovery(inst)
                     ProbeLog.line(string.format("[%s] EVENT recovery_begin %s (%s)", os.date("%H:%M:%S"), name, tostring(pkg)))
                     local p_ok, recovered = pcall(function()
                         return recoveryManager.checkAndRecover(inst)
@@ -247,7 +247,7 @@ function Monitor.start(conf, opts)
                         Logger.error(string.format("Monitor: recovery failed for %s (all attempts)", name))
                         ProbeLog.line(string.format("[%s] EVENT recovery_failed %s (%s)", os.date("%H:%M:%S"), name, tostring(pkg)))
                     end
-                    Status.endRecovery(id)
+                    Status.endRecovery(inst)
                     setRecovering(id, false)
                 end
             end

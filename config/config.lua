@@ -42,7 +42,7 @@ return {
     -- per instance). Tidak ada sinyal > timeout detik => status Freeze -> relaunch 5 menit.
     -- enabled=false = perilaku lama (RSS), tanpa server & tanpa perubahan apa pun.
     heartbeat = {
-        enabled = false,
+        enabled = true,
         host = "127.0.0.1",
         port = 8080,
         timeout = 30,
