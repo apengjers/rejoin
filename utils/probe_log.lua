@@ -63,7 +63,7 @@ function ProbeLog.scan(instances, statuses)
         if pkg and pkg ~= "" then
             local okRow, errRow = pcall(function()
                 local name = tostring(inst.name or (inst.id or i))
-                local st = statuses and statuses[pkg]
+                local st = statuses and statuses[(inst.id or i)]
 
                 local okRun, running = pcall(function() return APK.isRunning(pkg) end)
                 local okAct, active = pcall(function() return APK.isActive(pkg) end)

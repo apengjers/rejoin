@@ -1,0 +1,13 @@
+╭───────────────────────────────┬───────────────────────╮
+│                               |                       │
+│       Instance                |       Status          │
+│                               |                       │
+├───────────────────────────────┼───────────────────────┤
+│   com.apengjers.v3 (username) |   Resetting (Yellow)  │
+│   com.apengjers.v4 (username) |   Stuck (RED)         │
+│   com.apengjers.v5 (username) |   Recovery (Yellow)   │
+│   com.apengjers.v6 (username) |   Running (Green)     │
+├───────────────────────────────┼───────────────────────┤
+│   Memory Usage                |   79% (555MB Free)    │
+│   Storage Available           |   300GB Free          │
+╰───────────────────────────────┴───────────────────────╯

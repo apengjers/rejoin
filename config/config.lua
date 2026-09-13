@@ -37,22 +37,6 @@ return {
     -- Folder tujuan Deploy (Script Manager / AutoExecute). Scripts di-deploy ke sini
     -- sebagai <name>.lua. Path ini shared untuk semua instance (Delta mod: internal storage).
     appAutoExecutePath = "/sdcard/Delta/Autoexecute",
-    -- Heartbeat: clone di dalam game kirim sinyal HTTP tiap 10 detik ke server kecil
-    -- di Termux (scripts/heartbeat_server.py). Key = username akun (atau heartbeatKey
-    -- per instance). Tidak ada sinyal > timeout detik => status Freeze -> relaunch 5 menit.
-    -- enabled=false = perilaku lama (RSS), tanpa server & tanpa perubahan apa pun.
-    heartbeat = {
-        enabled = true,
-        host = "127.0.0.1",
-        port = 8080,
-        timeout = 30,
-        statePath = "data/heartbeat_state.txt",
-        strict = false,
-        -- strict=true (server-first) hanya aman SETELAH key Delta aktif: clone yang
-        -- wajib kirim sinyal tapi diam > noSignalGrace di-Freeze. Selama executor
-        -- belum bisa execute, biarkan false (status berhenti di Ingame, no relaunch-spam).
-        noSignalGrace = 180,
-    },
     instances = {
         [1] = {
         id = 1,

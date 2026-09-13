@@ -16,12 +16,11 @@ Rejoin Engine adalah tools otomatisasi berbasis **Lua** yang berjalan di **Termu
 - **Auto Detect Clone** — Setup Wizard otomatis mendeteksi app/clone Roblox yang terinstall lewat `cmd package resolve-activity`, jadi clone dengan package name di-rename (mis. `com.apengjers.v3`) tetap ketahuan.
 - **Launch tiap clone ditarget package** — membuka app clone lewat `am start -a MAIN -c LAUNCHER -p <pkg>` (menarget package eksplisit, jadi tiap clone dibuka sbg task sendiri; tidak butuh `cmd package resolve-activity` yang sering tidak tersedia di Termux non-root). `monkey` & resolve-activity hanya cadangan.
 - **Monitor** — loop tunggal, cek tiap instance bergantian. Jika satu instance mati, hanya instance itu yang di-recovery; instance lain tetap diproses.
-- **Live status per instance** — monitor menampilkan status tiap instance (`offline`, `starting`, `ingame`, `running`, `nologin`, `stuck`, `freeze`, `recovery`) setiap siklus. **Jujur dari sisi eksekusi**: `Ingame` = game jalan tapi eksekusi script belum dikonfirmasi; `Running` = eksekusi terkonfirmasi (heartbeat segar).
-- **Username display** — dashboard monitoring menampilkan **username Roblox** di tiap baris instance (mis. `com.apengjers.v3 (apengjers)`). Di-resolve otomatis dari token `.ROBLOSECURITY` via API Roblox (`users.roblox.com`). Hasil di-cache per instance (600 detik). Bisa di-override per-instance lewat `usernamePath` (path file yang baris pertamanya berisi username). Bukti scan tersimpan di `data/username_scan.log`. Retry otomatis 3× saat start monitor; kalau masih gagal, jalankan `lua tools/username_diag.lua` untuk cari titik gagalnya.
-- **Heartbeat monitoring (HTTP)** — clone di dalam game kirim sinyal "masih hidup" tiap 10 detik ke server kecil di Termux (`scripts/heartbeat_server.py`, Python stdlib, auto-start/stop oleh monitor). Tidak ada sinyal > `heartbeat.timeout` (30 dtk) → status **Freeze** → relaunch setelah 5 menit. Matching per-package via username akun (atau `heartbeatKey`). Menggunakan `request()` raw executor (bukan `HttpService`, yang di-proxy server Roblox). **Dashboard punya kolom `HB`** (umur sinyal per clone; `?` merah = username belum ter-resolve) + baris status server → bukti visual server benar-benar menerima dari tiap clone. **Mode strict (server-first, `heartbeat.strict`)** opsional per instance (`heartbeatRequired`): clone yang wajib kirim sinyal tapi diam > `noSignalGrace` di-*Freeze*, sementara prasyarat belum lengkap (key nil/logout/server OFF) tetap RSS safety — tidak relaunch-spam. Detail: `docs/heartbeat.md`. **Default off** — tidak mengubah perilaku sampai diaktifkan.
+- **Live status per instance** — monitor menampilkan status tiap instance (`offline`, `starting`, `ingame`, `nologin`, `stuck`, `freeze`, `recovery`) setiap siklus.
+- **Username display** — dashboard monitoring menampilkan **username Roblox** di tiap baris instance (mis. `com.apengjers.v3 (apengjers)`). Di-resolve otomatis dari token `.ROBLOSECURITY` via API Roblox (`users.roblox.com`). Hasil di-cache per instance (600 detik). Bisa di-override per-instance lewat `usernamePath` (path file yang baris pertamanya berisi username). Bukti scan tersimpan di `data/username_scan.log`.
 - **Auto relaunch freeze** — app yang freeze/stuck lebih dari `freezeTimeout` (default 300 detik / 5 menit) otomatis di-force-stop & di-relaunch.
 - **RSS-based health** — clone dideteksi benar-benar jalan (bukan sekadar proses hidup) lewat RSS ≥ `minRss` (default 200 MB). Clone yang di-close (stub RSS rendah) otomatis di-relaunch.
-- **Skip restart jika belum login** — clone yang **belum punya akun Roblox login** dan RSS rendah dianggap idle (status `NoLogin`), tidak pernah di-force-relaunch apapun status/kejadiannya (login screen wajar RSS kecil). Deteksi otomatis dengan **scan recursive** token `.ROBLOSECURITY` di direktori data clone (root) + **validasi format token & cross-check API Roblox**: cookie basi/ditolak → dianggap belum login; probe gagal/indeterminate → dianggap belum login (tidak relaunch) dengan peringatan di log. Lihat `Auth` / `cookiePath`.
+- **Skip restart jika belum login** — clone yang **belum punya akun Roblox login** dan RSS rendah dianggap idle (status `NoLogin`), tidak pernah di-force-relaunch apapun status/kejadiannya (login screen wajar RSS kecil). Deteksi otomatis dengan **scan recursive** token `.ROBLOSECURITY` di direktori data clone (root) — work untuk clone Roblox Lite/mod, bukan cuma `app_webview`. Lihat `Auth` / `cookiePath`.
 - **Optimasi RAM/CPU** — semua clone di-deprioritze (`renice 19` + `ionice idle`) supaya 4 floating window tidak rebutan CPU/RAM. Di-apply ulang tiap launch/recovery (karena pid berubah).
 - **Recovery** — force-stop → launch → buka game/private server → lanjut monitoring. Dicoba berulang (sesuai `recoveryRetries`).
 - **AutoExecute / Script Manager** — kelola **script `.lua`** langsung di `appAutoExecutePath` (mis. `/sdcard/Delta/Autoexecute`) lewat menu `6) AutoExecute Manager`: di layar langsung tampil isi folder (Add / Edit / Delete). Rejoin adalah pengelola script — **semua logika ditulis user** di dalam file script.
@@ -209,8 +208,6 @@ rejoin/
 ├── termux-boot.sh              # template auto-start saat boot (Termux:Boot)
 ├── debug_probe.lua             # alat diagnostik manual: cek isRunning/isActive per clone
 ├── launch.log                  # auto-debug tiap siklus menu 1 (Launch + Monitor)
-├── tools/
-│   └── username_diag.lua       # diagnostik resolve username per clone (token/API/local)
 ├── config/
 │   ├── config.lua              # konfigurasi aktif (dibuat otomatis dr template)
 │   └── template.lua            # template konfigurasi
@@ -233,11 +230,7 @@ rejoin/
 │   ├── optimizer.lua           # renice/ionice deprioritasi clone
 │   ├── autoexecute.lua         # AutoExecute: kelola langsung folder app (list/add/edit/delete)
 │   ├── auth.lua                # deteksi login via cookie (.ROBLOSECURITY)
-│   ├── username.lua            # resolve username per clone (via cookie + API Roblox)
-│   └── heartbeat.lua           # heartbeat HTTP: baca state, kendalikan server (start/stop)
-├── scripts/
-│   ├── heartbeat_server.py     # server penerima sinyal (Python stdlib, no-dep)
-│   └── heartbeat.lua           # script in-game (Delta): kirim sinyal tiap 10 detik
+│   └── username.lua            # resolve username per clone (via cookie + API Roblox)
 ├── utils/
 │   ├── shell.lua               # eksekusi shell (dengan timeout anti-hang)
 │   ├── probe_log.lua           # auto-debug per siklus -> launch.log
@@ -245,8 +238,7 @@ rejoin/
 │   ├── file.lua, json.lua, timer.lua
 └── data/
     ├── rejoin.log              # log runtime
-    ├── username_scan.log       # bukti/evidence scan username tiap sesi monitoring
-    └── heartbeat_state.txt     # state heartbeat (ditulis server, dibaca monitor)
+    └── username_scan.log       # bukti/evidence scan username tiap sesi monitoring
 ```
 
 ---
@@ -263,7 +255,7 @@ rejoin/
 - `7) Exit`
 
 ### Monitoring
-- Dashboard live menampilkan tiap instance sebagai `package (username)` (mis. `com.apengjers.v3 (apengjers)`) + status berwarna (`Ingame`/`Running`/`Freeze`/`NoLogin`/…). Username di-resolve sekali per sesi via cookie `.ROBLOSECURITY` (root) → API Roblox, di-cache. Kolom **`HB`** menampilkan umur sinyal heartbeat terakhir per clone (bukti server benar-benar menerima dari clone tsb), plus baris `HB server: ON :port (pid) | N key`. Rincian scan tiap sesi ada di `data/username_scan.log`.
+- Dashboard live menampilkan tiap instance sebagai `package (username)` (mis. `com.apengjers.v3 (apengjers)`) + status berwarna. Username di-resolve sekali per sesi via cookie `.ROBLOSECURITY` (root) → API Roblox, di-cache; kolom melebar otomatis di perangkat dengan tampilan lebar. Rincian scan tiap sesi ada di `data/username_scan.log`.
 
 ### Instances Manager
 - List, Add, Edit, Delete instance

@@ -1,0 +1,31 @@
+[07:35:37] [INFO] BOOT
+[07:35:37] [INFO] MENU
+[07:35:37] [INFO] Setup: config exists: config/config.lua
+[07:35:38] [INFO] Recovery.launchAndJoin: launching https://www.roblox.com/games/107778070777162
+[07:35:38] [INFO] APKManager: force stopping: com.apengjers.v4
+[07:35:39] [INFO] Recovery: opening game link for https://www.roblox.com/games/107778070777162: https://www.roblox.com/games/107778070777162/Steal-An-Egg
+[07:35:39] [INFO] Android: opening URL https://www.roblox.com/games/107778070777162/Steal-An-Egg (pkg=com.apengjers.v4)
+[07:35:39] [INFO] Android: openURL via targeted package (com.apengjers.v4)
+[07:35:40] [INFO] Recovery.launchAndJoin: done for https://www.roblox.com/games/107778070777162
+[07:35:40] [INFO] Recovery.waitUntilRunning: waiting for 5 instance(s) to be running (timeout=30s)
+[07:36:12] [WARN] Recovery.waitUntilRunning: https://www.roblox.com/games/107778070777162 not detected within 30s; continuing
+[07:36:12] [INFO] Recovery.launchAndJoin: launching https://www.roblox.com/games/107778070777162
+[07:36:12] [INFO] APKManager: force stopping: com.apengjers.v5
+[07:36:13] [INFO] Recovery: opening game link for https://www.roblox.com/games/107778070777162: https://www.roblox.com/games/107778070777162/Steal-An-Egg
+[07:36:13] [INFO] Android: opening URL https://www.roblox.com/games/107778070777162/Steal-An-Egg (pkg=com.apengjers.v5)
+[07:36:13] [INFO] Android: openURL via targeted package (com.apengjers.v5)
+[07:36:13] [INFO] Recovery.launchAndJoin: done for https://www.roblox.com/games/107778070777162
+[07:36:13] [INFO] Recovery.waitUntilRunning: waiting for 6 instance(s) to be running (timeout=30s)
+[07:36:45] [WARN] Recovery.waitUntilRunning: https://www.roblox.com/games/107778070777162 not detected within 30s; continuing
+[07:36:45] [INFO] Recovery.launchAndJoin: launching https://www.roblox.com/games/107778070777162
+[07:36:46] [INFO] APKManager: force stopping: com.apengjers.v6
+[07:36:47] [INFO] Recovery: opening game link for https://www.roblox.com/games/107778070777162: https://www.roblox.com/games/107778070777162/Steal-An-Egg
+[07:36:47] [INFO] Android: opening URL https://www.roblox.com/games/107778070777162/Steal-An-Egg (pkg=com.apengjers.v6)
+[07:36:47] [INFO] Android: openURL via targeted package (com.apengjers.v6)
+[07:36:47] [INFO] Recovery.launchAndJoin: done for https://www.roblox.com/games/107778070777162
+[07:36:47] [INFO] Recovery.waitUntilRunning: waiting for 7 instance(s) to be running (timeout=30s)
+[07:37:19] [WARN] Recovery.waitUntilRunning: https://www.roblox.com/games/107778070777162 not detected within 30s; continuing
+[07:37:19] [INFO] Recovery.launchAndJoin: launching https://www.roblox.com/games/107778070777162
+[07:37:19] [INFO] APKManager: force stopping: com.apengjers.v3
+[07:37:21] [INFO] Recovery: opening game link for https://www.roblox.com/games/107778070777162: https://www.roblox.com/games/107778070777162/Steal-An-Egg
+[07:37:21] [INFO] Android: opening URL https://www.roblox.com/games/107778070777162/Steal-An-Egg (pkg=com.apengjers.v3)

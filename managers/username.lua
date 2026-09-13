@@ -9,16 +9,6 @@ local TTL_OK   = 600  -- seconds before re-resolving a successful result
 local TTL_FAIL = 60   -- seconds before retrying after a failure / nil
 local LOG_PATH = "data/username_scan.log"
 
-local function rootAbs(p)
-    if not p or p == "" then return p end
-    if p:match("^/") then return p end
-    local home = os.getenv("HOME") or ""
-    if home == "" then return p end
-    return home .. "/rejoin/" .. p
-end
-
-LOG_PATH = rootAbs(LOG_PATH)
-
 local function trim(s)  return (s or ""):match("^%s*(.-)%s*$") end
 
 local function logLine(str)
@@ -28,24 +18,12 @@ local function logLine(str)
 end
 
 -- Extract the .ROBLOSECURITY token from the clone's data dir (root required).
--- The token value is `_|WARNING:-DO-NOT-SHARE!<payload>|<sig>|...`, so we grab from
--- "WARNING:" onward. The payload is base64url-ish and can contain `+` `/` `|` `-` `.`
--- `=` — ALL included in the class (the old regex stopped at `+`/`/`, truncating the
--- token and making the API 401 -> username unresolved).
+-- The token value is `_|WARNING:-DO-NOT-SHARE!<random>`, so we grab from "WARNING:" on.
 local function extractToken(base)
-    local cmd = "grep -a -r -o -E 'WARNING:-DO-NOT-SHARE![A-Za-z0-9_=:./+|-]+' '" .. base .. "' 2>/dev/null | head -1"
+    local cmd = "grep -a -r -o -E 'WARNING:-DO-NOT-SHARE![A-Za-z0-9_=:.-]{10,}' '" .. base .. "' 2>/dev/null | head -1"
     local ok, _, raw = pcall(function() return Shell.exec(cmd) end)
-    if ok and raw and raw ~= "" and raw ~= "(dry-run)" then
-        local t = raw:match("(WARNING%-DO%-NOT%-SHARE%![A-Za-z0-9_=:./+%%%-|]+)")
-        if t and #t > 20 then return t end
-    end
-    -- Fallback: a bare `_|...` token without the WARNING marker (some modded clones).
-    local cmd2 = "grep -a -r -o -E '_[|][A-Za-z0-9_=:./+%-]{25,}' '" .. base .. "' 2>/dev/null | head -1"
-    local ok2, _, raw2 = pcall(function() return Shell.exec(cmd2) end)
-    if ok2 and raw2 and raw2 ~= "" and raw2 ~= "(dry-run)" then
-        return raw2:match("(_|[A-Za-z0-9_=:./+%%%-]+)")
-    end
-    return nil
+    if not ok or not raw or raw == "" or raw == "(dry-run)" then return nil end
+    return raw:match("(WARNING%-DO%-NOT%-SHARE%![A-Za-z0-9_=:%.:%-]+)")
 end
 
 -- Resolve the username from the Roblox public authenticated-user API.
@@ -66,30 +44,6 @@ local function resolveLocal(base)
     if not ok or not out or out == "" or out == "(dry-run)" then return nil end
     local _, val = out:match('(username|userName|displayName|accountName|playerName)%s*[:=]%s*["\']?([A-Za-z0-9_]{3,32})')
     return val
-end
-
--- Authenticate the clone's cookie against the Roblox API and return its username.
--- Returns (name, state) where:
---   "ok"     -> a real session; `name` is the account username
---   "unauth" -> no (valid) token, or the API rejected it (401/stale cookie)
---   "fail"   -> network/probe error; inconclusive
--- Used by Auth.isLoggedIn as the strong cross-check (API never lies about a cookie).
-function Username.apiName(instance)
-    if not instance then return nil, "fail" end
-    local pkg = instance.package
-    if not pkg then return nil, "fail" end
-    local base = "/data/data/" .. pkg
-    local token = extractToken(base)
-    if not token then return nil, "unauth" end
-    local cmd = "curl -s --max-time 3 -H 'Cookie: .ROBLOSECURITY=" .. token
-        .. "' https://users.roblox.com/v1/users/authenticated"
-    local ok, _, out = pcall(function() return Shell.exec(cmd) end)
-    if not ok or not out or out == "" or out == "(dry-run)" then
-        return nil, "fail"
-    end
-    local name = out:match('"name"%s*:%s*"([^"]*)"') or out:match('"displayName"%s*:%s*"([^"]*)"')
-    if name then return name, "ok" end
-    return nil, "unauth"
 end
 
 -- Reset the username cache and (re)create the evidence log.
@@ -148,24 +102,10 @@ function Username.get(instance)
     return username
 end
 
--- Warm the cache for all instances, retrying 3x. Failures are cached as nil for
--- TTL_FAIL, so each retry drops the negative cache entry to force a real re-scan.
+-- Warm the cache for all instances (non-blocking per individual error).
 function Username.prefetch(instances)
-    instances = instances or {}
-    for attempt = 1, 3 do
-        local pending = 0
-        for _, inst in ipairs(instances) do
-            local u = nil
-            local ok, res = pcall(function() return Username.get(inst) end)
-            if ok then u = res end
-            if not u then
-                local pkg = inst and inst.package
-                if pkg then cache[pkg] = nil end
-                pending = pending + 1
-            end
-        end
-        if pending == 0 then break end
-        if attempt < 3 then os.execute("sleep 1") end
+    for _, inst in ipairs(instances or {}) do
+        pcall(function() Username.get(inst) end)
     end
 end
 

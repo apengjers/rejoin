@@ -17,11 +17,10 @@ local Shell = require("utils.shell")
 -- sitting on the login screen).
 --
 -- Returns:
---   true  -> an account is logged in (API confirmed, or a real token + API unreachable)
---   false -> NOT logged in (no real token, token rejected, OR the probe itself failed).
---            A failed/indeterminate probe is treated as NOT logged in so the monitor
---            never force-relaunches a clone it cannot confirm (safe for login screens);
---            a loud Logger.warn makes broken probes visible.
+--   true  -> an account is logged in (a session token is present)
+--   false -> definitely NOT logged in (no token found anywhere under the data dir)
+--   nil   -> could not determine (e.g. root read failed). Callers fall back to the
+--            restart-safe behavior (treat as logged in / relaunch normally).
 --
 -- The scan is cached per instance for a short TTL so we do not grep every monitor cycle.
 -- `cookiePath`, if set on an instance, overrides the base directory to scan.
@@ -46,19 +45,20 @@ local function baseDir(instance)
     return nil
 end
 
--- Grep recursively (as root) for a real `.ROBLOSECURITY` token under `base`.
--- true  -> at least one valid token found (marker format or the cookie name).
--- false -> scanned OK but nothing found -> definitely not logged in.
--- nil   -> the probe itself failed (dir missing / not readable / grep error).
-local function hasTokenLike(base)
-    local cmd = string.format(
-        "grep -a -r -l -E 'WARNING:-DO-NOT-SHARE![A-Za-z0-9_=:.-]{10,}|ROBLOSECURITY' '%s' 2>/dev/null",
-        base)
+-- Grep recursively (as root) for the token under `base`. Returns the number of lines
+-- matched, or nil if the probe itself failed (dir missing / not readable / grep error).
+local function countToken(base)
+    -- `grep -a -r -l` prints the file paths that contain the token; `-l` means we only
+    -- get file names (one per line) so the count is the number of files with the token.
+    local cmd = string.format("grep -a -r -l '.ROBLOSECURITY' '%s' 2>/dev/null", base)
     -- Shell.exec returns (ok, output); pcall returns (true, ok, output) so capture the
     -- THIRD value (the actual output string), not the second (Shell's ok boolean).
     local ok, _, out = pcall(function() return Shell.exec(cmd) end)
     if not ok or not out or out == "(dry-run)" then return nil end
-    return out ~= ""
+    -- Empty output = no matches found (dir exists and was scanned OK). We cannot tell a
+    -- truly empty result from "grep failed" via output alone, so first verify the base
+    -- dir is readable; if it is, empty means "no session".
+    return out
 end
 
 local function baseDirExists(base)
@@ -86,42 +86,22 @@ function Auth.isLoggedIn(instance)
 
     local result
     do
-        -- 1. Probe the base dir.
         local exists = baseDirExists(base)
         if exists == false then
             -- Data dir does not exist => the app has never stored anything => not logged in.
             result = false
         elseif exists == nil then
-            -- Could not even probe the dir => indeterminate. Policy: treat as NOT logged
-            -- in (a clone we cannot confirm is never force-relaunched).
-            Logger.warn(string.format("Auth.isLoggedIn(%s): cannot probe data dir; treating as NOT logged in (no relaunch)", pkg))
-            result = false
+            -- Could not even probe the dir => indeterminate.
+            result = nil
         else
-            -- 2. Look for a REAL session token (marker format or the cookie name).
-            local found = hasTokenLike(base)
-            if found == false then
-                -- Scanned OK, no token anywhere => definitely not logged in.
-                result = false
-            elseif found == nil then
-                -- Grep probe failed => indeterminate. Same policy as above.
-                Logger.warn(string.format("Auth.isLoggedIn(%s): token probe failed; treating as NOT logged in (no relaunch)", pkg))
-                result = false
+            local hits = countToken(base)
+            if hits == nil then
+                -- grep probe failed => indeterminate.
+                result = nil
+            elseif hits ~= "" then
+                result = true
             else
-                -- 3. Cross-check against the Roblox API: it is the final arbiter of
-                --    whether the cookie is a real, valid session.
-                local User = require("managers.username")
-                local _, state = User.apiName(instance)
-                if state == "ok" then
-                    result = true      -- API authenticated -> definitely logged in
-                elseif state == "unauth" then
-                    result = false     -- cookie rejected / no real token -> not logged in
-                else
-                    -- API unreachable -> inconclusive. Keep the safer "logged in" default
-                    -- so recovery still runs for a clone we cannot disprove (avoids a
-                    -- genuinely frozen clone never being relaunched).
-                    result = true
-                    Logger.debug(string.format("Auth.isLoggedIn(%s): API unreachable; assuming logged in", pkg))
-                end
+                result = false
             end
         end
     end

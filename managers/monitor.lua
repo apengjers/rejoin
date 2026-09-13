@@ -3,7 +3,6 @@ local Timer = require("utils.timer")
 local Status = require("managers.status")
 local Auth = require("managers.auth")
 local Username = require("managers.username")
-local Heartbeat = require("managers.heartbeat")
 local ProbeLog = require("utils.probe_log")
 
 local Monitor = {}
@@ -69,7 +68,7 @@ local function runSequentialLaunch(conf)
         local name = tostring(inst.name or id)
         local pkg = inst.package
 
-        Status.beginStarting(inst)
+        Status.beginStarting(id)
         Status.printSummary(instanceManager.getAll())
         Logger.info(string.format("Monitor: launching #%d %s (%s)", i, name, tostring(pkg)))
         ProbeLog.line(string.format("[%s] EVENT launch_begin #%d %s (%s)", os.date("%H:%M:%S"), i, name, tostring(pkg)))
@@ -97,7 +96,7 @@ local function runSequentialLaunch(conf)
             if running then Status.printSummary(instanceManager.getAll()) end
         end
 
-        Status.endStarting(inst)
+        Status.endStarting(id)
         -- New process got a new pid during this launch: deprioritize it now.
         pcall(function() return Optimizer.applyForInstance(inst) end)
         ProbeLog.line(string.format("[%s] EVENT launch_done #%d %s (%s) waited=%ds", os.date("%H:%M:%S"), i, name, tostring(pkg), waited))
@@ -131,8 +130,6 @@ function Monitor.start(conf, opts)
     -- Warm the username cache once right away so the launch/dashboard draws hit the
     -- cache instead of firing a Roblox API call on every frame.
     pcall(function() Username.prefetch(instanceManager.getAll()) end)
-    Heartbeat.configure(conf and conf.heartbeat or {})
-    Heartbeat.start()
     installSignalHandler()
     -- Full-screen dashboard: hide console log lines while monitoring so they don't push
     -- the dashboard around (log lines still go to the log file).
@@ -162,14 +159,14 @@ function Monitor.start(conf, opts)
             local status
             local okStatus, resStatus = pcall(function() return Status.check(inst) end)
             status = okStatus and resStatus or "unknown"
-            statuses[pkg] = status
+            statuses[id] = status
 
             -- If frozen/stuck long enough, relaunch the app — UNLESS the clone has no
             -- logged-in account: then low RSS / no activity is expected (it's just sitting
             -- on the login screen), so it must never be force-relaunched.
             local timeToRelaunch = false
             if status == "freeze" then
-                local p_ok, should = pcall(function() return Status.isFreezeTimeout(inst) end)
+                local p_ok, should = pcall(function() return Status.isFreezeTimeout(id) end)
                 timeToRelaunch = p_ok and should
             end
             if timeToRelaunch then
@@ -177,7 +174,7 @@ function Monitor.start(conf, opts)
                     Logger.debug(string.format("Monitor: %s not logged in; skipping relaunch", name))
                 else
                     Logger.warn(string.format("Monitor: instance %s frozen too long; relaunching", name))
-                    Status.beginRecovery(inst)
+                    Status.beginRecovery(id)
                     ProbeLog.line(string.format("[%s] EVENT relaunch_begin %s (%s)", os.date("%H:%M:%S"), name, tostring(pkg)))
                     local r_ok, r_err = pcall(function()
                         return recoveryManager.relaunch(inst)
@@ -191,7 +188,7 @@ function Monitor.start(conf, opts)
                         -- relaunch() restart changes the pid; re-apply deprioritization.
                         pcall(function() return Optimizer.applyForInstance(inst) end)
                     end
-                    Status.endRecovery(inst)
+                    Status.endRecovery(id)
                 end
             end
 
@@ -208,13 +205,6 @@ function Monitor.start(conf, opts)
                 local ok, res = pcall(function() return apkManager.isActive(pkg) end)
                 healthy = ok and res
             end
-            -- A live heartbeat also proves the clone is genuinely running (overrides
-            -- the RSS reading, e.g. while a floating window is minimized).
-            if not healthy then
-                pcall(function()
-                    if Heartbeat.isEnabled() and Heartbeat.alive(inst) then healthy = true end
-                end)
-            end
 
             if healthy then
                 Logger.debug(string.format("Monitor: instance healthy: %s", name))
@@ -230,7 +220,7 @@ function Monitor.start(conf, opts)
                 else
                     -- mark as recovering and run recovery (synchronous). This avoids overlapping recoveries.
                     setRecovering(id, true)
-                    Status.beginRecovery(inst)
+                    Status.beginRecovery(id)
                     ProbeLog.line(string.format("[%s] EVENT recovery_begin %s (%s)", os.date("%H:%M:%S"), name, tostring(pkg)))
                     local p_ok, recovered = pcall(function()
                         return recoveryManager.checkAndRecover(inst)
@@ -247,7 +237,7 @@ function Monitor.start(conf, opts)
                         Logger.error(string.format("Monitor: recovery failed for %s (all attempts)", name))
                         ProbeLog.line(string.format("[%s] EVENT recovery_failed %s (%s)", os.date("%H:%M:%S"), name, tostring(pkg)))
                     end
-                    Status.endRecovery(inst)
+                    Status.endRecovery(id)
                     setRecovering(id, false)
                 end
             end
@@ -265,9 +255,6 @@ function Monitor.start(conf, opts)
 
         Timer.sleepInterruptible(interval, function() return not running end)
     end
-
-    -- Stop the heartbeat server before restoring console.
-    pcall(function() Heartbeat.stop() end)
 
     -- Monitor stopped: restore console output and cursor, then leave a clean line.
     Logger.setConsoleVisible(true)
