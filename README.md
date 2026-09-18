@@ -151,7 +151,7 @@ return {
     freezeTimeout = 300,        -- detik app boleh freeze sebelum di-relaunch (5 menit)
     gracePeriod = 30,           -- detik setelah launch sebelum dinilai ingame vs stuck
     anrCheckEnabled = true,     -- deteksi ANR via logcat (best-effort, lebih andal dgn root)
-    minRss = 500,               -- MB ambang proses clone dianggap AKTIF (RSS)
+    minRss = 300,               -- MB ambang proses clone dianggap AKTIF (RSS)
 
     -- Deprioritze semua clone siram RAM/CPU.
     optimizer = {
