@@ -15,7 +15,7 @@ return {
     -- Minimum resident memory (MB) for a clone's process to be considered ACTIVE.
     -- A running clone reads ~1 GB while a force-close stub is ~188 MB, so anything
     -- below this is treated as "not really running" and gets relaunched. Tune if needed.
-    minRss = 300,
+    minRss = 200,
     -- Timeout (seconds) for each shell command (via the `timeout` tool) so a hung
     -- su/dumpsys call can't freeze the whole tool / stop the terminal accepting input.
     shellTimeout = 10,
