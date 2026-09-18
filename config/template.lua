@@ -46,11 +46,13 @@ return {
     },
 
     -- Clear each clone's cache right after a cold start / relaunch (after force-stop,
-    -- before launch) so it boots fresh: less storage/RAM bloat. Unless disabled, `pm
-    -- clear-cache` runs every time; clearWebView additionally wipes the WebView cache
+    -- before launch) so it boots fresh: less storage/RAM bloat. Wipes the cache dirs
+    -- the same way Settings' "Clear cache" button does (manual rm -rf of cache,
+    -- code_cache + external cache). clearWebView additionally wipes the WebView cache
     -- dirs (HTTP/service-worker/V8/GPU caches - the heaviest clutter on Roblox clones).
     -- NEVER touches the Cookies DB (.ROBLOSECURITY), Local Storage, shared_prefs or
-    -- databases, so logins survive. Requires root (useRoot = true).
+    -- databases, so logins survive. Requires root (useRoot = true). Probe via
+    -- `lua main.lua --clear-cache` (clear all clones without launching).
     cacheCleaner = {
         enabled = true,
         clearWebView = true,

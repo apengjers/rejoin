@@ -2,7 +2,7 @@
 
 ## Unreleased / Bug fixes
 
-- Auto clear cache saat launch: `cacheCleaner` (default ON) — cache tiap clone di-clear setiap cold start / relaunch (setelah force-stop, sebelum launch) via `pm clear-cache`; opsi `clearWebView=true` tambahan wipe WebView cache (`app_webview/Default/{Cache,Service Worker,Code Cache,GPUCache}`). Login aman: Cookies (`.ROBLOSECURITY`), Local Storage, `shared_prefs`, databases tidak pernah disentuh. Module baru `managers/cache_cleaner.lua`, call site di-bypass pcall di `recovery.lua` (launchAndJoin/relaunch/checkAndRecover).
+- Auto clear cache saat launch: `cacheCleaner` (default ON) — cache tiap clone dibersihkan setiap cold start / relaunch (setelah force-stop, sebelum launch) via `rm -rf` manual terhadap dir cache app (sama dengan tombol Settings "Clear cache"; **`pm clear-cache` tidak ada di Android**): `cache/`, `code_cache/`, external cache, dan dengan `clearWebView=true` + WebView caches (`app_webview/Default/{Cache,Service Worker,Code Cache,GPUCache}`). Log mengukur byte `before/after` sebagai bukti. CLI manual: `lua main.lua --clear-cache`. Login aman: Cookies (`.ROBLOSECURITY`), Local Storage, `shared_prefs`, databases, `files` tidak pernah disentuh. Module baru `managers/cache_cleaner.lua`, call site di-wrap pcall di `recovery.lua` (launchAndJoin/relaunch/checkAndRecover).
 
 ## v0.1
 

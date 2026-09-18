@@ -15,6 +15,7 @@ local startMonitorFlag = false
 local autoLaunchFlag = false
 local configSource = nil
 local dryRun = false
+local clearCacheFlag = false
 for i = 1, #args do
     local a = args[i]
     if a == "--headless" or a == "--no-interactive" then headless = true end
@@ -22,6 +23,7 @@ for i = 1, #args do
     if a == "--start-monitor" then startMonitorFlag = true end
     if a == "--auto-launch" then autoLaunchFlag = true end
     if a == "--dry-run" then dryRun = true end
+    if a == "--clear-cache" then clearCacheFlag = true end
     if a == "--config" then
         local nextArg = args[i+1]
         if nextArg and nextArg:sub(1,2) ~= "--" then
@@ -66,6 +68,15 @@ local data = conf
 
 local InstanceManager = require("managers.instance")
 InstanceManager.load(Config.get())
+
+-- One-shot: clear cache for all configured clones (apps must be closed first), exit.
+if clearCacheFlag then
+    local CacheCleaner = require("managers.cache_cleaner")
+    local n = CacheCleaner.applyAll()
+    print(string.format("Cleared cache for %d instance(s). Apps harus dalam keadaan berhenti (force-stop).", n))
+    Logger.info(string.format("Main: --clear-cache applied to %d instance(s)", n))
+    os.exit(0)
+end
 
 -- Headless mode: optionally start monitor immediately
 if headless and startMonitorFlag then
