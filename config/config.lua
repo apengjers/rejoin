@@ -15,7 +15,7 @@ return {
     -- Minimum resident memory (MB) for a clone's process to be considered ACTIVE.
     -- A running clone reads ~1 GB while a force-close stub is ~188 MB, so anything
     -- below this is treated as "not really running" and gets relaunched. Tune if needed.
-    minRss = 200,
+    minRss = 500,
     -- Timeout (seconds) for each shell command (via the `timeout` tool) so a hung
     -- su/dumpsys call can't freeze the whole tool / stop the terminal accepting input.
     shellTimeout = 10,
@@ -33,6 +33,14 @@ return {
         enabled = true,
         renice = 19,   -- CPU scheduling priority (higher = lower). 19 = lowest.
         ionice = 3,    -- I/O class: 0=none,1=realtime,2=best-effort,3=idle.
+    },
+    -- Bersihkan cache tiap clone saat cold start / relaunch (setelah force-stop, sebelum
+    -- launch) biar tiap boot fresh: storage & RAM lebih ringan. Tidak menyentuh Cookies
+    -- (.ROBLOSECURITY), Local Storage, shared_prefs, atau databases -> login aman.
+    -- clearWebView=true juga wipe cache WebView (bloat terbesar di clone Roblox).
+    cacheCleaner = {
+        enabled = true,
+        clearWebView = true,
     },
     -- Folder tujuan Deploy (Script Manager / AutoExecute). Scripts di-deploy ke sini
     -- sebagai <name>.lua. Path ini shared untuk semua instance (Delta mod: internal storage).

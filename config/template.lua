@@ -27,7 +27,7 @@ return {
     -- Minimum resident memory (MB) for a clone's process to be considered ACTIVE.
     -- A running clone reads ~1 GB while a force-close stub is ~188 MB, so anything
     -- below this is treated as "not really running" and gets relaunched. Tune if needed.
-    minRss = 200,
+    minRss = 500,
     -- Timeout (seconds) for each shell command (via the `timeout` tool) so a hung
     -- su/dumpsys call can't freeze the whole tool / stop the terminal accepting input.
     shellTimeout = 10,
@@ -43,6 +43,17 @@ return {
         enabled = true,
         renice = 19,   -- CPU scheduling priority (higher = lower). 19 = lowest.
         ionice = 3,    -- I/O class: 0=none,1=realtime,2=best-effort,3=idle.
+    },
+
+    -- Clear each clone's cache right after a cold start / relaunch (after force-stop,
+    -- before launch) so it boots fresh: less storage/RAM bloat. Unless disabled, `pm
+    -- clear-cache` runs every time; clearWebView additionally wipes the WebView cache
+    -- dirs (HTTP/service-worker/V8/GPU caches - the heaviest clutter on Roblox clones).
+    -- NEVER touches the Cookies DB (.ROBLOSECURITY), Local Storage, shared_prefs or
+    -- databases, so logins survive. Requires root (useRoot = true).
+    cacheCleaner = {
+        enabled = true,
+        clearWebView = true,
     },
 
     -- Folder tujuan AutoExecute (Script Manager). Scripts dikelola LANGSUNG di sini

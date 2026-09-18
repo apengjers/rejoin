@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased / Bug fixes
+
+- Auto clear cache saat launch: `cacheCleaner` (default ON) — cache tiap clone di-clear setiap cold start / relaunch (setelah force-stop, sebelum launch) via `pm clear-cache`; opsi `clearWebView=true` tambahan wipe WebView cache (`app_webview/Default/{Cache,Service Worker,Code Cache,GPUCache}`). Login aman: Cookies (`.ROBLOSECURITY`), Local Storage, `shared_prefs`, databases tidak pernah disentuh. Module baru `managers/cache_cleaner.lua`, call site di-bypass pcall di `recovery.lua` (launchAndJoin/relaunch/checkAndRecover).
+
 ## v0.1
 
 Initial Project

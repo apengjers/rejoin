@@ -22,6 +22,7 @@ Rejoin Engine adalah tools otomatisasi berbasis **Lua** yang berjalan di **Termu
 - **RSS-based health** — clone dideteksi benar-benar jalan (bukan sekadar proses hidup) lewat RSS ≥ `minRss` (default 200 MB). Clone yang di-close (stub RSS rendah) otomatis di-relaunch.
 - **Skip restart jika belum login** — clone yang **belum punya akun Roblox login** dan RSS rendah dianggap idle (status `NoLogin`), tidak pernah di-force-relaunch apapun status/kejadiannya (login screen wajar RSS kecil). Deteksi otomatis dengan **scan recursive** token `.ROBLOSECURITY` di direktori data clone (root) — work untuk clone Roblox Lite/mod, bukan cuma `app_webview`. Lihat `Auth` / `cookiePath`.
 - **Optimasi RAM/CPU** — semua clone di-deprioritze (`renice 19` + `ionice idle`) supaya 4 floating window tidak rebutan CPU/RAM. Di-apply ulang tiap launch/recovery (karena pid berubah).
+- **Auto clear cache saat launch** — cache tiap clone di-clear otomatis **setiap cold start / relaunch** (setelah force-stop, sebelum launch) via `pm clear-cache` (+ wipe cache WebView bila `clearWebView=true`) supaya tiap boot fresh: storage & RAM lebih ringan. **Login aman** — `Cookies` (`.ROBLOSECURITY`), Local Storage, `shared_prefs`, dan `databases` tidak pernah disentuh. Config: `cacheCleaner`.
 - **Recovery** — force-stop → launch → buka game/private server → lanjut monitoring. Dicoba berulang (sesuai `recoveryRetries`).
 - **AutoExecute / Script Manager** — kelola **script `.lua`** langsung di `appAutoExecutePath` (mis. `/sdcard/Delta/Autoexecute`) lewat menu `6) AutoExecute Manager`: di layar langsung tampil isi folder (Add / Edit / Delete). Rejoin adalah pengelola script — **semua logika ditulis user** di dalam file script.
 
@@ -150,13 +151,20 @@ return {
     freezeTimeout = 300,        -- detik app boleh freeze sebelum di-relaunch (5 menit)
     gracePeriod = 30,           -- detik setelah launch sebelum dinilai ingame vs stuck
     anrCheckEnabled = true,     -- deteksi ANR via logcat (best-effort, lebih andal dgn root)
-    minRss = 200,               -- MB ambang proses clone dianggap AKTIF (RSS)
+    minRss = 500,               -- MB ambang proses clone dianggap AKTIF (RSS)
 
     -- Deprioritze semua clone siram RAM/CPU.
     optimizer = {
         enabled = true,
         renice = 19,   -- prioritas CPU (makin besar makin rendah; 19 = terkecil)
         ionice = 3,    -- kelas I/O (3 = idle)
+    },
+
+    -- Auto clear cache tiap clone saat cold start / relaunch (setelah force-stop).
+    -- clearWebView=true juga wipe cache WebView (bloat terbesar clone Roblox).
+    cacheCleaner = {
+        enabled = true,
+        clearWebView = true,
     },
 
     instances = {
@@ -228,6 +236,7 @@ rejoin/
 │   ├── monitor.lua             # loop monitor
 │   ├── recovery.lua            # engine recovery
 │   ├── optimizer.lua           # renice/ionice deprioritasi clone
+│   ├── cache_cleaner.lua       # auto clear cache tiap clone saat cold start/relaunch
 │   ├── autoexecute.lua         # AutoExecute: kelola langsung folder app (list/add/edit/delete)
 │   ├── auth.lua                # deteksi login via cookie (.ROBLOSECURITY)
 │   └── username.lua            # resolve username per clone (via cookie + API Roblox)
