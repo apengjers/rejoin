@@ -110,39 +110,65 @@ local COLUMNS = {
     { col = "has_expires",     lit = "1" },
     { col = "is_persistent",   lit = "1" },
     { col = "samesite",        lit = "2" },
+    { col = "top_frame_site_key", lit = "'https://roblox.com'" }, -- Chrome 123+ NOT NULL
+    { col = "source_scheme",      lit = "'secure'" },             -- Chrome 123+ NOT NULL
 }
 
--- Parse `PRAGMA table_info(cookies);` output (lines like `0|host_key|TEXT|1||0`) into a
--- set of column names. Returns nil when nothing usable was produced.
+-- Parse `PRAGMA table_info(cookies);` output (lines like `0|host_key|TEXT|1||0`) into
+-- { name = {type, notnull, dflt} }. Returns nil when nothing usable was produced.
 local function pragmaColumns(out)
     if not out or out == "" then return nil end
-    local cols = {}
+    local cols, hasValue = {}, false
     for line in (out .. "\n"):gmatch("(.-)\n") do
-        local _, _, name = line:find("^%d+|([^|]+)")
-        if name then cols[name] = true end
+        local name, typ, notnull, dflt = line:match("^%d+|([^|]+)|([^|]*)|([^|]*)|([^|]*)$")
+        if name then
+            cols[name] = { type = typ or "", notnull = (notnull == "1"), dflt = dflt or "" }
+            if name == "value" then hasValue = true end
+        end
     end
-    -- Validate: a real cookies schema must at least expose the value column.
-    if not cols.value then return nil end
+    if not hasValue then return nil end
     return cols
 end
 
--- Build (columns, values) for an INSERT. Tries the DB's real schema first; falls back
--- to the full static COLUMNS list when the schema probe fails or looks unusable.
+-- Type-sized empty literal for an obligatory column that has no default.
+local function emptyLiteral(typ)
+    typ = (typ or ""):upper()
+    if typ:find("TEXT") or typ:find("CHAR") or typ:find("CLOB") then return "''" end
+    if typ:find("BLOB") then return "X''" end
+    return "0"
+end
+
+-- Build (columns, values) for an INSERT that matches the DB's real schema: known
+-- cookies columns get their explicit literal, any extra NOT NULL column without a
+-- default gets a type-safe empty literal, the rest are omitted (SQLite uses its own
+-- defaults). Falls back to the static COLUMNS list when the schema probe fails.
 local function buildInsertSpec(runner, db, token)
     local tokenLit = "'" .. token:gsub("'", "''") .. "'"
 
-    local present = pragmaColumns(exec(
+    local schema = pragmaColumns(exec(
         string.format("%s %s \"PRAGMA table_info(cookies);\"", runner, quote(db))
     ))
-    if present then
-        local cols, vals = {}, {}
+    if schema then
+        local overrides = {}
         for _, c in ipairs(COLUMNS) do
-            if present[c.col] then
-                cols[#cols + 1] = c.col
-                vals[#vals + 1] = (c.col == "value") and tokenLit or c.lit
+            overrides[c.col] = (c.col == "value") and tokenLit or c.lit
+        end
+
+        local cols, vals = {}, {}
+        local needHost, needName, needPath = false, false, false
+        for col, info in pairs(schema) do
+            if overrides[col] then
+                cols[#cols + 1] = col
+                vals[#vals + 1] = overrides[col]
+                if col == "host_key" then needHost = true end
+                if col == "name" then needName = true end
+                if col == "path" then needPath = true end
+            elseif info.notnull and info.dflt == "" then
+                cols[#cols + 1] = col
+                vals[#vals + 1] = emptyLiteral(info.type)
             end
         end
-        if cols[1] then
+        if needHost and needName and needPath and cols[1] then
             return cols, vals
         end
     end
