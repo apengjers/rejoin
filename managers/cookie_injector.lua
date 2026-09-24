@@ -9,13 +9,21 @@ local Auth = require("managers.auth")
 --
 -- Target DB: <Auth.getBaseDir()>/app_webview/Default/Cookies. If the default path is
 -- missing (modded/"Lite" clones keep it elsewhere) we search a few levels deep under
--- the same base directory. Requires `sqlite3` on the device (`pkg install sqlite`).
+-- the same base directory.
+--
+-- sqlite3 note: the `su` shell resets PATH, so a Termux-installed sqlite3 is usually
+-- NOT reachable as plain `sqlite3`. We resolve it explicitly (full Termux path +
+-- LD_LIBRARY_PATH) and run every command through that resolved runner.
 --
 -- Safety: the app is force-stopped first (a running WebView holds the DB / may rewrite
 -- it), the DB is backed up before writing, and every write is verified afterwards.
 -- Login/other cookies are left untouched apart from the .ROBLOSECURITY row.
 
 local CookieInjector = {}
+
+-- Termux default prefix (PATH + lib dir for the dynamically-linked sqlite3).
+local TERMUX_PREFIX = "/data/data/com.termux/files/usr"
+local TERMUX_SQLITE = TERMUX_PREFIX .. "/bin/sqlite3"
 
 -- Non-empty printable token (trimmed, no line breaks / control chars).
 local function validToken(token)
@@ -36,13 +44,29 @@ end
 local function exec(cmd)
     local ok, _, out = pcall(function() return Shell.exec(cmd) end)
     if not ok or not out then return nil end
-    return (out or ""):gsub("\n+$", "")
+    return out:gsub("\n+$", "")
 end
 
 local function existsFile(path)
     local out = exec(string.format("[ -f %s ] && echo AE_YES || echo AE_NO", quote(path)))
     if not out then return nil end
     return out:find("AE_YES", 1, true) ~= nil
+end
+
+-- Resolve a runnable `sqlite3` prefix for this device (the `su` shell does not inherit
+-- the Termux PATH). Returns a command prefix string, or nil when sqlite3 is not found.
+local function resolveSqlite3()
+    -- 1) Present directly in the su environment.
+    local which = exec("command -v sqlite3")
+    if which and which ~= "" then
+        return "sqlite3"
+    end
+    -- 2) Standard Termux install.
+    local ok = exec(string.format("[ -x %s ] && echo AE_YES || echo AE_NO", quote(TERMUX_SQLITE)))
+    if ok and ok:find("AE_YES", 1, true) then
+        return string.format("PATH=%s/bin:$PATH LD_LIBRARY_PATH=%s/lib sqlite3", TERMUX_PREFIX, TERMUX_PREFIX)
+    end
+    return nil
 end
 
 -- First file named "Cookies" found under base (app_webview/Default first, then a
@@ -75,27 +99,47 @@ local COLUMNS = {
     { col = "samesite",        lit = "2" },
 }
 
--- Build (columns, values) for an INSERT, restricted to columns present in the schema.
--- Falls back to the full list if the schema probe fails.
-local function buildInsertSpec(db, token)
+-- Parse `PRAGMA table_info(cookies);` output (lines like `0|host_key|TEXT|1||0`) into a
+-- set of column names. Returns nil when nothing usable was produced.
+local function pragmaColumns(out)
+    if not out or out == "" then return nil end
+    local cols = {}
+    for line in (out .. "\n"):gmatch("(.-)\n") do
+        local _, _, name = line:find("^%d+|([^|]+)")
+        if name then cols[name] = true end
+    end
+    -- Validate: a real cookies schema must at least expose the value column.
+    if not cols.value then return nil end
+    return cols
+end
+
+-- Build (columns, values) for an INSERT. Tries the DB's real schema first; falls back
+-- to the full static COLUMNS list when the schema probe fails or looks unusable.
+local function buildInsertSpec(runner, db, token)
     local tokenLit = "'" .. token:gsub("'", "''") .. "'"
-    local present = nil
-    local out = exec(string.format("sqlite3 %s \"SELECT name FROM pragma_table_info('cookies');\"", quote(db)))
-    if out then
-        present = {}
-        for line in (out .. "\n"):gmatch("(.-)\n") do
-            line = line:gsub("%s+$", "")
-            if line ~= "" then present[line] = true end
+
+    local present = pragmaColumns(exec(
+        string.format("%s %s \"PRAGMA table_info(cookies);\"", runner, quote(db))
+    ))
+    if present then
+        local cols, vals = {}, {}
+        for _, c in ipairs(COLUMNS) do
+            if present[c.col] then
+                cols[#cols + 1] = c.col
+                vals[#vals + 1] = (c.col == "value") and tokenLit or c.lit
+            end
+        end
+        if cols[1] then
+            return cols, vals
         end
     end
+    Logger.warn("CookieInjector: schema cookies tidak terbaca/valid untuk " .. tostring(db) .. ", pakai daftar kolom statis")
 
+    -- Fallback: the full static list (all columns exist on modern Android WebView).
     local cols, vals = {}, {}
     for _, c in ipairs(COLUMNS) do
-        local hasCol = (present == nil) or present[c.col]
-        if hasCol then
-            cols[#cols + 1] = c.col
-            vals[#vals + 1] = (c.col == "value") and tokenLit or c.lit
-        end
+        cols[#cols + 1] = c.col
+        vals[#vals + 1] = (c.col == "value") and tokenLit or c.lit
     end
     return cols, vals
 end
@@ -122,9 +166,10 @@ function CookieInjector.inject(instance, token)
     end
     Logger.info("CookieInjector: target DB " .. db)
 
-    -- 3) sqlite3 must exist.
-    if not exec("command -v sqlite3") then
-        return false, "sqlite3 tidak terpasang. Jalankan: pkg install sqlite"
+    -- 3) sqlite3 must be resolvable (Termux install usually needs PATH/LD_LIBRARY_PATH).
+    local runner = resolveSqlite3()
+    if not runner then
+        return false, "sqlite3 tidak terpasang / tidak dapat dijalankan. Install: pkg install sqlite (Termux)"
     end
 
     -- 4) Backup first (restore point if the token needs to be removed later).
@@ -134,28 +179,33 @@ function CookieInjector.inject(instance, token)
     Logger.info("CookieInjector: backup -> " .. backup)
 
     -- 5) INSERT OR REPLACE restricted to the DB's actual columns.
-    local cols, vals = buildInsertSpec(db, token)
-    if not cols[1] then
-        return false, "Schema cookies tidak terbaca: " .. tostring(db)
-    end
+    local cols, vals = buildInsertSpec(runner, db, token)
     local sql = string.format(
         "INSERT OR REPLACE INTO cookies (%s) VALUES (%s);",
         table.concat(cols, ", "), table.concat(vals, ", ")
     )
-    local insertOut = exec("sqlite3 " .. quote(db) .. " '" .. sql:gsub("'", "'\\''") .. "'")
-    Logger.info("CookieInjector: sqlite3 output: " .. tostring(insertOut or "(none)"))
+    local insertOut = exec(runner .. " " .. quote(db) .. " '" .. sql:gsub("'", "'\\''") .. "'")
+    if insertOut and insertOut ~= "" then
+        Logger.warn("CookieInjector: sqlite3 output: " .. insertOut)
+    else
+        Logger.info("CookieInjector: sqlite3 output: (none)")
+    end
 
     -- 6) Fold any WAL data into the main DB.
-    exec("sqlite3 " .. quote(db) .. " 'PRAGMA wal_checkpoint(TRUNCATE);'")
+    exec(runner .. " " .. quote(db) .. " 'PRAGMA wal_checkpoint(TRUNCATE);'")
 
     -- 7) Verify the token is actually stored.
     local verify = exec(string.format(
-        "sqlite3 %s \"SELECT length(value) FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%%roblox.com%%';\"",
-        quote(db)
+        "%s %s \"SELECT length(value) FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%%roblox.com%%';\"",
+        runner, quote(db)
     ))
     Auth.resetCache()
-    if not verify or tonumber(verify:gsub("%s+", "")) == nil or tonumber(verify:gsub("%s+", "")) == 0 then
-        return false, "Injeksi mungkin gagal (verifikasi: value tidak terbaca). Backup: " .. backup
+    if not verify then
+        return false, "Injeksi mungkin gagal (verifikasi tidak terbaca). Output: " .. tostring(insertOut or "(none)") .. " | Backup: " .. backup
+    end
+    local len = tonumber((verify:gsub("%s+", "")))
+    if len == nil or len == 0 then
+        return false, "Injeksi mungkin gagal (value tidak tersimpan). Output: " .. tostring(insertOut or "(none)") .. " | Backup: " .. backup
     end
 
     Logger.info(string.format(

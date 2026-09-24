@@ -1,0 +1,12 @@
+[01:56:43] [INFO] APKManager: force stopping: com.apengjers.v3
+[01:56:44] [INFO] CookieInjector: target DB /data/data/com.apengjers.v3/app_webview/Default/Cookies
+          [01:56:44] [INFO] CookieInjector: backup -> /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260925-015644
+                                        [GAGAL] Schema cookies tidak terbaca: /data/data/com.apengjers.v3/app_webview/Default/Cookies
+
+~/rejoin $ su -c 'sqlite3 /data/data/com.apengjers.v3/app_webview/Default/Cookies "PRAGMA table_info(cookies);"'
+sh: sqlite3: inaccessible or not found
+
+~/rejoin $ su -c 'sqlite3 --version'
+sh: sqlite3: inaccessible or not found
+
+~/rejoin $ su -c 'PATH=/data/data/com.termux/files/usr/bin:$PATH LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib sqlite3 --version'                                           3.53.4 2026-07-24 19:02:57 bf7c7f30031888f4e796e429ab3978879485813aaca6f641c7b33e4e0945alt1 (64-bit)
