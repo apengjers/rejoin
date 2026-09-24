@@ -239,7 +239,8 @@ function CookieInjector.verifyRemote(token)
     local body = exec("cat " .. outFile .. " 2>/dev/null")
     exec("rm -f " .. outFile)
 
-    local code = tonumber((out or ""):gsub("%s+", ""))
+    local codeStr = (out or ""):gsub("%s+", "")
+    local code = tonumber(codeStr)
     if code == 200 and body and body:find('"name"') and not body:find('"errors"') then
         Logger.info("CookieInjector: token VALID remote (code " .. tostring(code) .. ")")
         return true, "Token valid"
@@ -262,8 +263,15 @@ function CookieInjector.inject(instance, token)
     end
 
     -- 0) Fail fast when the session is already dead server-side (the silent-login-fail
-    --    trap from before), BEFORE force-stopping the app or touching any data.
-    local okRemote, msgRemote = CookieInjector.verifyRemote(token)
+    --    trap from before), BEFORE force-stopping the app or touching any data. Wrapped
+    --    in pcall so any unexpected verify crash can never take down the whole CLI.
+    local okRemote, msgRemote = true, "verifikasi remote dilewati (error internal)"
+    local okP, a, b = pcall(CookieInjector.verifyRemote, token)
+    if okP then
+        okRemote, msgRemote = a, b
+    else
+        Logger.warn("CookieInjector: verifyRemote error: " .. tostring(a))
+    end
     if not okRemote then
         return false, msgRemote
     end
