@@ -25,6 +25,7 @@ Rejoin Engine adalah tools otomatisasi berbasis **Lua** yang berjalan di **Termu
 - **Auto clear cache saat launch** — cache tiap clone dibersihkan otomatis **setiap cold start / relaunch** (setelah force-stop, sebelum launch) lewat `rm -rf` manual terhadap dir cache app — cara kerja yang sama dengan tombol **"Clear cache"** di Settings (tidak ada `pm clear-cache` di Android). Dengan `clearWebView=true` juga wipe cache WebView (HTTP/service-worker/V8/GPU). Log mengukur byte `before/after` sebagai bukti. **Login aman** — `Cookies` (`.ROBLOSECURITY`), Local Storage, `shared_prefs`, `databases`, `files` tidak pernah disentuh. Bisa dipicu manual tanpa launch: `lua main.lua --clear-cache`. Config: `cacheCleaner`.
 - **Recovery** — force-stop → launch → buka game/private server → lanjut monitoring. Dicoba berulang (sesuai `recoveryRetries`).
 - **AutoExecute / Script Manager** — kelola **script `.lua`** langsung di `appAutoExecutePath` (mis. `/sdcard/Delta/Autoexecute`) lewat menu `6) AutoExecute Manager`: di layar langsung tampil isi folder (Add / Edit / Delete). Rejoin adalah pengelola script — **semua logika ditulis user** di dalam file script.
+- **Inject Cookie** — menu `7) Inject Cookie`: inject token **`.ROBLOSECURITY`** ke Cookies DB WebView clone mana pun dari daftar config (auto `am force-stop` dulu, target path sama dengan deteksi login / `cookiePath`, backup DB dulu, verifikasi setelahnya). Butuh `sqlite3` di device (`pkg install sqlite`).
 
 ---
 
@@ -229,6 +230,7 @@ rejoin/
 │   ├── autoexecute_cli.lua     # menu AutoExecute / Script Manager
 │   ├── settings_cli.lua        # menu settings
 │   ├── logs_cli.lua            # viewer log
+│   ├── inject_cookie_cli.lua   # menu Inject Cookie
 │   └── runtime.lua             # flag runtime (dry-run)
 ├── managers/
 │   ├── apk.lua                 # launch, force-stop, isRunning, isActive, getRSSinKB
@@ -239,6 +241,7 @@ rejoin/
 │   ├── cache_cleaner.lua       # auto clear cache tiap clone saat cold start/relaunch
 │   ├── autoexecute.lua         # AutoExecute: kelola langsung folder app (list/add/edit/delete)
 │   ├── auth.lua                # deteksi login via cookie (.ROBLOSECURITY)
+│   ├── cookie_injector.lua     # inject .ROBLOSECURITY ke Cookies DB clone (sqlite3)
 │   └── username.lua            # resolve username per clone (via cookie + API Roblox)
 ├── utils/
 │   ├── shell.lua               # eksekusi shell (dengan timeout anti-hang)

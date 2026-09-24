@@ -2,6 +2,8 @@
 
 ## Unreleased / Bug fixes
 
+- **Inject Cookie**: menu `7) Inject Cookie` (`core/inject_cookie_cli.lua` + `managers/cookie_injector.lua`) — inject token `.ROBLOSECURITY` ke Cookies DB WebView clone pilihan dari config. Auto `am force-stop` dulu, target path memakai `Auth.getBaseDir()` (hormati override `cookiePath`), deteksi DB via app_webview/Default/Cookies + fallback `find -maxdepth 5 -name Cookies`, butuh `sqlite3` (`pkg install sqlite`). Schema dibaca dinamis (`pragma_table_info`) sebelum INSERT OR REPLACE (host `roblox.com`), backup DB ke `<db>.bak-<ts>`, `PRAGMA wal_checkpoint(TRUNCATE)`, verifikasi `SELECT length(value)`, `Auth.resetCache()`. `core.main` expose `Auth.getBaseDir()`. Main menu: `7) Exit` digeser jadi `8) Exit`.
+
 - Auto clear cache saat launch: `cacheCleaner` (default ON) — cache tiap clone dibersihkan setiap cold start / relaunch (setelah force-stop, sebelum launch) via `rm -rf` manual terhadap dir cache app (sama dengan tombol Settings "Clear cache"; **`pm clear-cache` tidak ada di Android**): `cache/`, `code_cache/`, external cache, dan dengan `clearWebView=true` + WebView caches (`app_webview/Default/{Cache,Service Worker,Code Cache,GPUCache}`). Log mengukur byte `before/after` sebagai bukti. CLI manual: `lua main.lua --clear-cache`. Login aman: Cookies (`.ROBLOSECURITY`), Local Storage, `shared_prefs`, databases, `files` tidak pernah disentuh. Module baru `managers/cache_cleaner.lua`, call site di-wrap pcall di `recovery.lua` (launchAndJoin/relaunch/checkAndRecover).
 
 ## v0.1

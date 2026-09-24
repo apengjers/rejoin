@@ -45,6 +45,13 @@ local function baseDir(instance)
     return nil
 end
 
+-- Public helper: the base directory under which this instance's session data lives
+-- (honours the per-instance `cookiePath` override). Shared with cookie_injector so the
+-- injection targets the exact same location the login scan uses.
+function Auth.getBaseDir(instance)
+    return baseDir(instance)
+end
+
 -- Grep recursively (as root) for the token under `base`. Returns the number of lines
 -- matched, or nil if the probe itself failed (dir missing / not readable / grep error).
 local function countToken(base)
