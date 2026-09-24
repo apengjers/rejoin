@@ -38,7 +38,7 @@ end
 
 function CLI.run()
     while true do
-        print("\nInject Cookie:\n  1) Inject .ROBLOSECURITY ke instance\n  2) Dump cookies (debug)\n  3) Exit\n")
+        print("\nInject Cookie:\n  1) Inject .ROBLOSECURITY ke instance\n  2) Dump cookies (debug)\n  3) Cek validitas token\n  4) Exit\n")
         local choice = prompt("Choose an option: ") or ""
         choice = choice:match("^%s*(.-)%s*$")
         if choice == "1" then
@@ -71,6 +71,15 @@ function CLI.run()
                 end
             end
         elseif choice == "3" then
+            local token = prompt("Cookie .ROBLOSECURITY: ") or ""
+            token = token:gsub("^%s+", ""):gsub("%s+$", "")
+            if token == "" then
+                print("Token kosong, dibatalkan.")
+            else
+                local ok, msg = CookieInjector.verifyRemote(token)
+                print(ok and ("[VALID] " .. tostring(msg)) or ("[GAGAL] " .. tostring(msg)))
+            end
+        elseif choice == "4" then
             print("Exiting Inject Cookie")
             break
         else

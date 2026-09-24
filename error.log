@@ -1,8 +1,0 @@
-/data/data/com.termux/files/usr/bin/lua: ./managers/cookie_injector.lua:242: bad argument #2 to 'tonumber' (base out of range)
-                                                                                                                              stack traceback:
-                                                                                                                                                [C]: in function 'tonumber'
-                ./managers/cookie_injector.lua:242: in function 'managers.cookie_injector.verifyRemote'
-                                                                                                        ./managers/cookie_injector.lua:266: in function 'managers.cookie_injector.inject'
-                                ./core/inject_cookie_cli.lua:54: in function 'core.inject_cookie_cli.run'
-                                                                                                                main.lua:146: in main chunk
-                                                                                                                                                [C]: in ?

@@ -226,8 +226,7 @@ function CookieInjector.verifyRemote(token)
     if not validToken(token) then return false, "Token tidak valid format" end
     local curlBin = resolveCurl()
     if not curlBin then
-        Logger.warn("CookieInjector: curl tidak ditemukan, verifikasi remote dilewati")
-        return true, "curl tidak ditemukan, verifikasi dilewati"
+        return false, "curl tidak ditemukan (pkg install curl) - tidak bisa verifikasi token, inject dibatalkan"
     end
 
     local outFile = "/data/local/tmp/ci_auth_$$.json"
@@ -241,19 +240,18 @@ function CookieInjector.verifyRemote(token)
 
     local codeStr = (out or ""):gsub("%s+", "")
     local code = tonumber(codeStr)
+    local snippet = (body or "(kosong)"):gsub("%s+", " "):sub(1, 160)
+
     if code == 200 and body and body:find('"name"') and not body:find('"errors"') then
-        Logger.info("CookieInjector: token VALID remote (code " .. tostring(code) .. ")")
+        Logger.info("CookieInjector: token VALID remote (code 200)")
         return true, "Token valid"
     end
-    if body and body:find("[Uu]ser is not authenticated") then
-        return false, "Token DITOLAK Roblox (User is not authenticated). Sesi sudah mati/di-revoke - export ulang dari Chrome."
-    end
-    if code == 401 then
-        return false, "Token DITOLAK Roblox (HTTP 401). Cucuk token di /tmp tak terbaca: " .. tostring(body or "(none)")
-    end
-    -- Unreadable / offline / unexpected: don't block, but warn.
-    Logger.warn("CookieInjector: verifikasi remote tidak konklusif (code=" .. tostring(code) .. "), lanjut tanpa verifikasi")
-    return true, "Verifikasi remote tidak konklusif, lanjut"
+    -- Fail closed: anything else is not a valid session. Show what Roblox actually
+    -- answered (a dead/rotated token is exactly the silent-login-fail trap we hit).
+    return false, string.format(
+        "Token DITOLAK/tidak valid di sisi Roblox (HTTP %s). Kemungkinan sesi sudah mati/di-revoke keamanan Roblox. Export ulang dari Chrome lalu verifikasi: curl -s -H \"Cookie: .ROBLOSECURITY=<tok>\" https://users.roblox.com/v1/users/authenticated (harus balas {\"sub\":...,\"name\":...}). Body server: %s",
+        tostring(codeStr == "" and "(tak terbaca)" or codeStr), snippet
+    )
 end
 
 -- Inject `token` into `instance`'s cookie DB. Returns (ok, message).
