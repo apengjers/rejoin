@@ -30,7 +30,7 @@ local function validToken(token)
     if not token or type(token) ~= "string" then return false end
     token = token:gsub("^%s+", ""):gsub("%s+$", "")
     if token == "" or #token > 2048 then return false end
-    if token:find("[\n\r\0]") then return false end
+    if token:find("[\n\r\0'\" ]") then return false end
     return true
 end
 
@@ -51,6 +51,29 @@ local function existsFile(path)
     local out = exec(string.format("[ -f %s ] && echo AE_YES || echo AE_NO", quote(path)))
     if not out then return nil end
     return out:find("AE_YES", 1, true) ~= nil
+end
+
+-- WebKit/Chrome stores UTC timestamps as microseconds since 1601-01-01 (our era means
+-- we must add the 1970-1601 offset to a unix epoch before scaling to µs).
+local WEBKIT_EPOCH_OFFSET = 11644473600 -- seconds between 1601-01-01 and 1970-01-01
+
+local function webkitNow()
+    return tostring((os.time() + WEBKIT_EPOCH_OFFSET) * 1000000)
+end
+
+-- Resolve a runnable `curl` (Termux install preferred; the `su` shell has no PATH).
+local function resolveCurl()
+    local candidates = { TERMUX_PREFIX .. "/bin/curl", "/system/bin/curl", "curl" }
+    for _, c in ipairs(candidates) do
+        if c == "curl" then
+            local sys = exec("[ -x /system/bin/curl ] && echo AE_YES || echo AE_NO")
+            if sys and sys:find("AE_YES", 1, true) then return "curl" end
+        else
+            local out = exec(string.format("[ -x %s ] && echo AE_YES || echo AE_NO", quote(c)))
+            if out and out:find("AE_YES", 1, true) then return c end
+        end
+    end
+    return nil
 end
 
 -- Resolve a runnable `sqlite3` prefix for this device. The `su` shell does not inherit
@@ -147,7 +170,7 @@ end
 -- cookies columns get their explicit literal, any extra NOT NULL column without a
 -- default gets a type-safe empty literal, the rest are omitted (SQLite uses its own
 -- defaults). Falls back to the static COLUMNS list when the schema probe fails.
-local function buildInsertSpec(runner, db, token)
+local function buildInsertSpec(runner, db, token, nowLit)
     local tokenLit = "'" .. token:gsub("'", "''") .. "'"
 
     local schema = pragmaColumns(exec(
@@ -158,6 +181,9 @@ local function buildInsertSpec(runner, db, token)
         for _, c in ipairs(COLUMNS) do
             overrides[c.col] = (c.col == "value") and tokenLit or c.lit
         end
+        -- Realistic creation/last-access timestamps (mirrors what a real login writes).
+        overrides["creation_utc"] = nowLit
+        overrides["last_access_utc"] = nowLit
 
         local cols, vals = {}, {}
         local needHost, needName, needPath = false, false, false
@@ -182,16 +208,64 @@ local function buildInsertSpec(runner, db, token)
     -- Fallback: the full static list (all columns exist on modern Android WebView).
     local cols, vals = {}, {}
     for _, c in ipairs(COLUMNS) do
-        cols[#cols + 1] = c.col
-        vals[#vals + 1] = (c.col == "value") and tokenLit or c.lit
+        if c.col == "creation_utc" or c.col == "last_access_utc" then
+            cols[#cols + 1] = c.col
+            vals[#vals + 1] = nowLit
+        else
+            cols[#cols + 1] = c.col
+            vals[#vals + 1] = (c.col == "value") and tokenLit or c.lit
+        end
     end
     return cols, vals
+end
+
+-- Verify a token is still accepted by Roblox before we write anything to the app.
+-- Returns (ok, message); ok == true also when curl is unavailable (verify skipped,
+-- so an offline device can still inject).
+function CookieInjector.verifyRemote(token)
+    if not validToken(token) then return false, "Token tidak valid format" end
+    local curlBin = resolveCurl()
+    if not curlBin then
+        Logger.warn("CookieInjector: curl tidak ditemukan, verifikasi remote dilewati")
+        return true, "curl tidak ditemukan, verifikasi dilewati"
+    end
+
+    local outFile = "/data/local/tmp/ci_auth_$$.json"
+    exec("rm -f " .. outFile)
+    local out = exec(string.format(
+        "%s -s -o %s -w '%%{http_code}' -H 'Cookie: .ROBLOSECURITY=%s' https://users.roblox.com/v1/users/authenticated",
+        curlBin, outFile, token
+    ))
+    local body = exec("cat " .. outFile .. " 2>/dev/null")
+    exec("rm -f " .. outFile)
+
+    local code = tonumber((out or ""):gsub("%s+", ""))
+    if code == 200 and body and body:find('"name"') and not body:find('"errors"') then
+        Logger.info("CookieInjector: token VALID remote (code " .. tostring(code) .. ")")
+        return true, "Token valid"
+    end
+    if body and body:find("[Uu]ser is not authenticated") then
+        return false, "Token DITOLAK Roblox (User is not authenticated). Sesi sudah mati/di-revoke - export ulang dari Chrome."
+    end
+    if code == 401 then
+        return false, "Token DITOLAK Roblox (HTTP 401). Cucuk token di /tmp tak terbaca: " .. tostring(body or "(none)")
+    end
+    -- Unreadable / offline / unexpected: don't block, but warn.
+    Logger.warn("CookieInjector: verifikasi remote tidak konklusif (code=" .. tostring(code) .. "), lanjut tanpa verifikasi")
+    return true, "Verifikasi remote tidak konklusif, lanjut"
 end
 
 -- Inject `token` into `instance`'s cookie DB. Returns (ok, message).
 function CookieInjector.inject(instance, token)
     if not validToken(token) then
         return false, "Token tidak valid (kosong / mengandung karakter control / >2048 char)"
+    end
+
+    -- 0) Fail fast when the session is already dead server-side (the silent-login-fail
+    --    trap from before), BEFORE force-stopping the app or touching any data.
+    local okRemote, msgRemote = CookieInjector.verifyRemote(token)
+    if not okRemote then
+        return false, msgRemote
     end
 
     local pkg = instance and instance.package
@@ -222,8 +296,12 @@ function CookieInjector.inject(instance, token)
     exec("cp -a " .. quote(db) .. " " .. quote(backup))
     Logger.info("CookieInjector: backup -> " .. backup)
 
-    -- 5) INSERT OR REPLACE restricted to the DB's actual columns.
-    local cols, vals = buildInsertSpec(runner, db, token)
+    -- 5) Remove any stale/half-written `.ROBLOSECURITY` rows first, then INSERT a
+    --    single clean row (faulty old rows use host_key="roblox.com" / a non-empty
+    --    top_frame_site_key and would only confuse cookie matching).
+    local nowLit = webkitNow()
+    exec(runner .. " " .. quote(db) .. " \"DELETE FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%.roblox.com%';\"")
+    local cols, vals = buildInsertSpec(runner, db, token, nowLit)
     local sql = string.format(
         "INSERT OR REPLACE INTO cookies (%s) VALUES (%s);",
         table.concat(cols, ", "), table.concat(vals, ", ")
@@ -238,18 +316,20 @@ function CookieInjector.inject(instance, token)
     -- 6) Fold any WAL data into the main DB.
     exec(runner .. " " .. quote(db) .. " 'PRAGMA wal_checkpoint(TRUNCATE);'")
 
-    -- 7) Verify the token is actually stored.
+    -- 7) Verify exactly one clean `.ROBLOSECURITY` row is stored.
     local verify = exec(string.format(
-        "%s %s \"SELECT length(value) FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%%roblox.com%%';\"",
+        "%s %s \"SELECT length(value) || '|' || COUNT(*) FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%%.roblox.com%%' GROUP BY length(value);\"",
         runner, quote(db)
     ))
     Auth.resetCache()
     if not verify then
         return false, "Injeksi mungkin gagal (verifikasi tidak terbaca). Output: " .. tostring(insertOut or "(none)") .. " | Backup: " .. backup
     end
-    local len = tonumber((verify:gsub("%s+", "")))
-    if len == nil or len == 0 then
-        return false, "Injeksi mungkin gagal (value tidak tersimpan). Output: " .. tostring(insertOut or "(none)") .. " | Backup: " .. backup
+    local len, cnt = verify:match("^(%d+)|(%d+)%s*$")
+    len = tonumber(len)
+    cnt = tonumber(cnt)
+    if len == nil or len == 0 or cnt ~= 1 then
+        return false, "Injeksi mungkin gagal (value tidak tersimpan / jumlah baris bukan 1). Output: " .. tostring(insertOut or "(none)") .. " | Verify: " .. tostring(verify) .. " | Backup: " .. backup
     end
 
     Logger.info(string.format(
