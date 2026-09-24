@@ -95,23 +95,28 @@ local function locateCookieDb(base)
     return nil
 end
 
--- Row shape (subset that exists across WebView versions; checked against the schema).
+-- Row shape matching the row a real in-app WebView login writes (verified against the
+-- working login row dumped from a logged-in clone: host_key keeps the leading dot,
+-- expires_utc is WebKit-epoch microseconds far in the future, samesite=-1 is
+-- UNSPECIFIED, source_scheme=2 is HttpsOrigin, top_frame_site_key stays empty so the
+-- cookie is legacy/unpartitioned and matches any top frame).
 local COLUMNS = {
     { col = "creation_utc",    lit = "0" },
-    { col = "host_key",        lit = "'roblox.com'" },
+    { col = "host_key",        lit = "'.roblox.com'" },
     { col = "name",            lit = "'.ROBLOSECURITY'" },
     { col = "value",           lit = nil }, -- filled with the escaped token
     { col = "path",            lit = "'/'" },
-    { col = "expires_utc",     lit = "4102444800000000" }, -- year 2100 (WebKit µs)
+    { col = "expires_utc",     lit = "14380828598000000" }, -- ~year 2056 (WebKit µs)
     { col = "is_secure",       lit = "1" },
     { col = "is_httponly",     lit = "1" },
     { col = "last_access_utc", lit = "0" },
     { col = "priority",        lit = "1" },
     { col = "has_expires",     lit = "1" },
     { col = "is_persistent",   lit = "1" },
-    { col = "samesite",        lit = "2" },
-    { col = "top_frame_site_key", lit = "''" }, -- legacy/unpartitioned => cookie matches any top frame
-    { col = "source_scheme",      lit = "''" }, -- let secure/httponly flags drive matching
+    { col = "samesite",        lit = "-1" }, -- UNSPECIFIED
+    { col = "top_frame_site_key", lit = "''" }, -- legacy/unpartitioned => matches any top frame
+    { col = "source_scheme",      lit = "2" },  -- HttpsOrigin
+    { col = "source_port",        lit = "443" },
 }
 
 -- Parse `PRAGMA table_info(cookies);` output (lines like `0|host_key|TEXT|1||0`) into
