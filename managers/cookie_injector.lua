@@ -110,8 +110,8 @@ local COLUMNS = {
     { col = "has_expires",     lit = "1" },
     { col = "is_persistent",   lit = "1" },
     { col = "samesite",        lit = "2" },
-    { col = "top_frame_site_key", lit = "'https://roblox.com'" }, -- Chrome 123+ NOT NULL
-    { col = "source_scheme",      lit = "'secure'" },             -- Chrome 123+ NOT NULL
+    { col = "top_frame_site_key", lit = "''" }, -- legacy/unpartitioned => cookie matches any top frame
+    { col = "source_scheme",      lit = "''" }, -- let secure/httponly flags drive matching
 }
 
 -- Parse `PRAGMA table_info(cookies);` output (lines like `0|host_key|TEXT|1||0`) into
@@ -120,7 +120,7 @@ local function pragmaColumns(out)
     if not out or out == "" then return nil end
     local cols, hasValue = {}, false
     for line in (out .. "\n"):gmatch("(.-)\n") do
-        local name, typ, notnull, dflt = line:match("^%d+|([^|]+)|([^|]*)|([^|]*)|([^|]*)$")
+        local name, typ, notnull, dflt = line:match("^%d+|([^|]+)|([^|]*)|([^|]*)|([^|]*)|([^|]*)$")
         if name then
             cols[name] = { type = typ or "", notnull = (notnull == "1"), dflt = dflt or "" }
             if name == "value" then hasValue = true end
@@ -255,6 +255,54 @@ function CookieInjector.inject(instance, token)
         "OK: cookie di-inject ke %s (%d char). DB: %s | Backup: %s",
         pkg, #token, db, backup
     )
+end
+
+-- Debug: dump every cookie row of a clone's Cookies DB. The `.ROBLOSECURITY` value is
+-- shown as its length only (no token leak). Returns (ok, message).
+function CookieInjector.dump(instance)
+    local pkg = instance and instance.package
+    if not pkg then return false, "Instance tidak punya package" end
+    local base = Auth.getBaseDir(instance)
+    if not base then return false, "Tidak bisa tentukan base dir instance" end
+
+    local db = locateCookieDb(base)
+    if not db then
+        return false, "Cookies DB tidak ditemukan di '" .. base .. "'. Kalau clone mod/Lite, set per-instance 'cookiePath' di config."
+    end
+    Logger.info("CookieInjector: dump target DB " .. db)
+
+    local runner = resolveSqlite3(db)
+    if not runner then
+        return false, "sqlite3 tidak terpasang / tidak dapat dijalankan. Install: pkg install sqlite (Termux)"
+    end
+
+    -- Column order from the real schema.
+    local colOrder = {}
+    local schemaOut = exec(string.format("%s %s \"PRAGMA table_info(cookies);\"", runner, quote(db)))
+    for line in (schemaOut or ""):gmatch("(.-)\n") do
+        local name = line:match("^%d+|([^|]+)")
+        if name then colOrder[#colOrder + 1] = name end
+    end
+    if #colOrder == 0 then
+        return false, "Tidak bisa baca schema cookies. Output: " .. tostring(schemaOut or "(none)")
+    end
+
+    local selectList = {}
+    for _, c in ipairs(colOrder) do
+        if c == "value" then
+            selectList[#selectList + 1] = "length(value) AS value_len"
+        else
+            selectList[#selectList + 1] = c
+        end
+    end
+    local sql = "SELECT " .. table.concat(selectList, ", ") .. " FROM cookies;"
+    local rowsOut = exec(string.format("%s %s \".mode line\" \"%s\"", runner, quote(db), sql))
+    if not rowsOut then
+        return false, "Dump gagal (tidak ada output)."
+    end
+    Auth.resetCache()
+    Logger.info("CookieInjector: dumped " .. tostring(instance and instance.package or "?") .. " cookie DB:")
+    return true, rowsOut
 end
 
 return CookieInjector

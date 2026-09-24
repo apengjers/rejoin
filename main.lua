@@ -103,7 +103,7 @@ local function prompt(msg)
 end
 
 while true do
-    print('\nMain Menu:\n  1) Launch All + Monitor\n  2) Instances Manager\n  3) Settings\n  4) View Logs\n  5) Start Monitor\n  6) AutoExecute Manager\n  7) Inject Cookie\n  8) Exit\n  (tekan Ctrl+C untuk berhenti)\n')
+    print('\nMain Menu:\n  1) Launch All + Monitor\n  2) Instances Manager\n  3) Settings\n  4) View Logs\n  5) Start Monitor\n  6) AutoExecute Manager\n  7) Inject Cookie\n  8) Dump Cookies (debug)\n  9) Exit\n  (tekan Ctrl+C untuk berhenti)\n')
     local choice = prompt("Choose: ") or ""
     choice = choice:match("^%s*(.-)%s*$")
     if choice == "1" then
@@ -145,6 +145,9 @@ while true do
         local InjectCookieCLI = require("core.inject_cookie_cli")
         InjectCookieCLI.run()
     elseif choice == "8" then
+        local DumpCookiesCLI = require("core.dump_cookies_cli")
+        DumpCookiesCLI.run()
+    elseif choice == "9" then
         print("Exiting main")
         break
     else
