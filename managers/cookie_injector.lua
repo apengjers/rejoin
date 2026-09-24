@@ -53,18 +53,31 @@ local function existsFile(path)
     return out:find("AE_YES", 1, true) ~= nil
 end
 
--- Resolve a runnable `sqlite3` prefix for this device (the `su` shell does not inherit
--- the Termux PATH). Returns a command prefix string, or nil when sqlite3 is not found.
-local function resolveSqlite3()
-    -- 1) Present directly in the su environment.
-    local which = exec("command -v sqlite3")
-    if which and which ~= "" then
-        return "sqlite3"
+-- Resolve a runnable `sqlite3` prefix for this device. The `su` shell does not inherit
+-- the Termux PATH, and Shell's `timeout` wrapper would treat a leading `VAR=val` as an
+-- argument to timeout (not the inner command), so we probe real candidate runners with
+-- a `SELECT 1;` and return the first one that answers from the target DB.
+local function resolveSqlite3(db)
+    local runners = {}
+    -- 1) Termux via `env` (env is a real /system/bin binary, so `timeout` can exec it).
+    table.insert(runners, string.format(
+        "env PATH=%s/bin:/system/bin:/system/xbin LD_LIBRARY_PATH=%s/lib %s",
+        TERMUX_PREFIX, TERMUX_PREFIX, TERMUX_SQLITE
+    ))
+    -- 2) Termux absolute path (Termux binaries carry a baked-in RUNPATH).
+    table.insert(runners, TERMUX_SQLITE)
+    -- 3) A ROM that ships its own sqlite3 in the su PATH.
+    local sys = exec("[ -x /system/bin/sqlite3 ] && echo AE_YES || echo AE_NO")
+    if sys and sys:find("AE_YES", 1, true) then
+        table.insert(runners, "sqlite3")
     end
-    -- 2) Standard Termux install.
-    local ok = exec(string.format("[ -x %s ] && echo AE_YES || echo AE_NO", quote(TERMUX_SQLITE)))
-    if ok and ok:find("AE_YES", 1, true) then
-        return string.format("PATH=%s/bin:$PATH LD_LIBRARY_PATH=%s/lib sqlite3", TERMUX_PREFIX, TERMUX_PREFIX)
+
+    for _, runner in ipairs(runners) do
+        local out = exec(string.format("%s %s \"SELECT 1;\"", runner, quote(db)))
+        if out and out:gsub("%s+", "") == "1" then
+            Logger.info("CookieInjector: using sqlite runner: " .. runner)
+            return runner
+        end
     end
     return nil
 end
@@ -167,7 +180,7 @@ function CookieInjector.inject(instance, token)
     Logger.info("CookieInjector: target DB " .. db)
 
     -- 3) sqlite3 must be resolvable (Termux install usually needs PATH/LD_LIBRARY_PATH).
-    local runner = resolveSqlite3()
+    local runner = resolveSqlite3(db)
     if not runner then
         return false, "sqlite3 tidak terpasang / tidak dapat dijalankan. Install: pkg install sqlite (Termux)"
     end
