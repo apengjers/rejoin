@@ -451,27 +451,37 @@ function CookieInjector.listDbs(instance)
     return locateCookieDbs(base)
 end
 
--- Post-launch probe: for every Cookies DB prints the injected row's `len|count`,
--- and greps the instance data dir for any OTHER file holding the token (a sign the
--- mod keeps its session outside the WebView store).
+-- Post-launch probe: READ-ONLY, no network. For every Cookies DB prints the injected
+-- row's `len|valuePrefix|count` and whether the stored value still equals the injected
+-- token. If a DIFFERENT prefix appears, the app's WebView already authenticated and
+-- Roblox rotated the session -> the app IS logged in. Also greps the instance data dir
+-- (excluding our `.bak-*` backup copies) for any OTHER file holding the token.
+-- NOTE: never call this at the same time as a live verifyRemote against the same token
+-- while the app is running -- two clients authenticating one session in a row is exactly
+-- what triggers Roblox's session-hijack detection (instant logout).
 function CookieInjector.probeToken(instance, token)
     local base = Auth.getBaseDir(instance)
     if not base then return "(base dir tidak terbaca)" end
     local lines = {}
     local dbs = locateCookieDbs(base)
+    local tokPrefix = token and token:sub(1, 6) or ""
     if dbs and #dbs > 0 then
         local runner = resolveSqlite3(dbs[1])
         for _, db in ipairs(dbs) do
             local status = "(sqlite runner tidak ada)"
             if runner then
                 local v = exec(string.format(
-                    "%s %s \"SELECT length(value) || '|' || COUNT(*) FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%%.roblox.com%%' GROUP BY length(value);\"",
+                    "%s %s \"SELECT length(value) || '##' || substr(value,1,6) || '##' || COUNT(*) FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%%.roblox.com%%' GROUP BY length(value), substr(value,1,6);\"",
                     runner, quote(db)
                 ))
                 v = v and v:gsub("%s+$", "") or ""
-                if v:find("^%d+|%d+$") then
-                    local lenPart, cntPart = v:match("^(%d+)|(%d+)$")
-                    status = "len=" .. tostring(lenPart) .. ", count=" .. tostring(cntPart)
+                local lenPart, pfx, cntPart = v:match("^(%d+)##(.-)##(%d+)$")
+                if lenPart and pfx and cntPart then
+                    if pfx == tokPrefix then
+                        status = "len=" .. lenPart .. ", prefix=" .. pfx .. "=token, count=" .. cntPart .. " (SAMA dgn inject -> app belum men-rotasi)"
+                    else
+                        status = "len=" .. lenPart .. ", prefix=" .. pfx .. "!=token, count=" .. cntPart .. " (BERBEDA -> WebView SUDAH authenticate, Roblox rotasi session = app pastinya LOGIN)"
+                    end
                 else
                     status = "tidak ada baris / " .. tostring(v == "" and "(kosong)" or v)
                 end
@@ -487,11 +497,19 @@ function CookieInjector.probeToken(instance, token)
     local prefix = token and token:sub(1, 30) or ""
     if prefix ~= "" then
         local g = exec(string.format("grep -a -r -l -F %s %s 2>/dev/null | head -n 20", quote(prefix), quote(base)))
-        if g and g ~= "" then
-            lines[#lines + 1] = "File lain yang berisi token:"
+        local others = {}
+        if g then
             for line in (g .. "\n"):gmatch("(.-)\n") do
                 line = line:gsub("%s+$", "")
-                if line ~= "" then lines[#lines + 1] = "  " .. line end
+                if line ~= "" and not line:find("%.bak%-", 1, true) then
+                    others[#others + 1] = line
+                end
+            end
+        end
+        if #others > 0 then
+            lines[#lines + 1] = "File lain yang berisi token:"
+            for _, l in ipairs(others) do
+                lines[#lines + 1] = "  " .. l
             end
         else
             lines[#lines + 1] = "File lain berisi token: (tidak ada -> HANYA Cookies DB)"

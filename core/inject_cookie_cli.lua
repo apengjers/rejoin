@@ -91,37 +91,37 @@ function CLI.run()
                 else
                     local confirm = prompt(string.format("Inject cookie (%d char) ke %s? Force-stop app dulu. type 'y': ", #token, tostring(inst.package or ""))) or ""
                     if confirm:lower() == "y" then
-                        local ok, msg = CookieInjector.inject(inst, token)
-                        if ok then
-                            print("[OK] " .. tostring(msg))
-                            -- The app was force-stopped by inject; launch it right away so
-                            -- it authenticates against Roblox immediately (narrows the
-                            -- server-side revoke window) and re-check the session a few
-                            -- seconds later so we KNOW whether login should have happened.
-                            local APK = require("managers.apk")
-                            local Timer = require("utils.timer")
-                            print("Membuka " .. tostring(inst.package or "") .. "...")
-                            local lOk, lOut = APK.launch(inst.package)
-                            if not lOk then
-                                print("[WARN] Gagal membuka app otomatis: " .. tostring(lOut or "(tanpa output)"))
-                            end
-                            Timer.sleep(4)
-                            local stillOk, stillMsg = CookieInjector.verifyRemote(token)
-                            if stillOk then
-                                print("[CEK] Session masih VALID setelah app dibuka (akun tidak di-revoke).")
-                                print("      Buka app -> jika avatar/username muncul, login SUKSES.")
+local ok, msg = CookieInjector.inject(inst, token)
+                            if ok then
+                                print("[OK] " .. tostring(msg))
+                                -- The app was force-stopped by inject; launch it right away so
+                                -- it authenticates against Roblox immediately.
+                                local APK = require("managers.apk")
+                                local Timer = require("utils.timer")
+                                print("Membuka " .. tostring(inst.package or "") .. "...")
+                                local lOk, lOut = APK.launch(inst.package)
+                                if not lOk then
+                                    print("[WARN] Gagal membuka app otomatis: " .. tostring(lOut or "(tanpa output)"))
+                                end
+                                -- IMPORTANT: DO NOT curl-verify the token while the app is
+                                -- running. curl + WebView authenticating the SAME session in
+                                -- succession is exactly the "session hijack" pattern Roblox
+                                -- detects -> instant revoke (proven at 01:43: 200 at :28,
+                                -- app launched at :30, 401 hit during the post-launch curl).
+                                -- Here we only READ the DB (rotation check), no network.
+                                Timer.sleep(8)
+                                print("")
+                                print("Periksa rotasi session (baca DB saja, TANPA panggil server —")
+                                print("menghindari 2 client pakai token sama serentak yg memicu revoke):")
+                                print(CookieInjector.probeToken(inst, token))
+                                print("")
+                                print("- prefix SAMA dgn token -> rotasi belum terjadi, cek app saat ini.")
+                                print("- prefix BERBEDA -> WebView sudah authenticate (login PASTI sukses).")
+                                print("JANGAN verifikasi token (7>3) SELAMA app masih terbuka.")
+                                exitAfter("Inject + launch selesai.")
                             else
-                                print("[GAGAL] Session di-REVOKE Roblox setelah inject/dibuka: " .. tostring(stillMsg))
-                                print("        Export ulang token FRESH (jangan reuse di clone lain).")
+                                exitAfter("[GAGAL] " .. tostring(msg))
                             end
-                            print("")
-                            print("Diagnostik pasca-launch (DB mana yang menyimpan token + file lain):")
-                            print(CookieInjector.probeToken(inst, token))
-                            print("")
-                            exitAfter("Inject + launch selesai.")
-                        else
-                            exitAfter("[GAGAL] " .. tostring(msg))
-                        end
                     else
                         exitAfter("Dibatalkan")
                     end
@@ -144,6 +144,7 @@ function CLI.run()
             backToMain()
             break
         elseif choice == "3" then
+            print("TUTUP dulu clone / app-nya sebelum cek (2 client pakai token sama serentak = trigger revoke).")
             local token = readToken("Cookie .ROBLOSECURITY: ")
             if token == "" then
                 exitAfter("[GAGAL] Token kosong, dibatalkan.")

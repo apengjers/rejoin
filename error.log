@@ -1,0 +1,44 @@
+[01:43:28] [INFO] CookieInjector: token VALID remote (code 200)
+                                                               [01:43:28] [INFO] APKManager: force stopping: com.apengjers.v3
+                                    [01:43:30] [INFO] CookieInjector: target 1 Cookies DB: /data/data/com.apengjers.v3/app_webview/Default/Cookies
+                                                         [01:43:30] [INFO] CookieInjector: using sqlite runner: env PATH=/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib /data/data/com.termux/f ...
+                                                                                   [01:43:30] [INFO] CookieInjector: backup -> /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-014330
+                        [01:43:30] [INFO] CookieInjector: sqlite3 output: (none)
+                                                                                [01:43:30] [INFO] CookieInjector: injected 1200-char .ROBLOSECURITY into com.apengjers.v3 across 1 Cookies DB
+           [OK] OK: cookie di-inject ke com.apengjers.v3 (1200 char) di 1 Cookies DB.
+                                                                                     DB: /data/data/com.apengjers.v3/app_webview/Default/Cookies
+                                                       Membuka com.apengjers.v3...
+                                                                                  [01:43:30] [INFO] APKManager: launching package: com.apengjers.v3
+                                                          [01:43:30] [INFO] APKManager: exec: am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p com.apengjers.v3
+          [01:43:30] [INFO] APKManager: am start accepted for com.apengjers.v3
+                                                                              [GAGAL] Session di-REVOKE Roblox setelah inject/dibuka: Token DITOLAK/tidak valid di sisi Roblox (HTTP 401). Kemungkinan sesi sudah mati/di-revoke keamanan Roblox. Export ulang dari Chrome lalu verifikasi: curl -s -H "Cookie: .ROBLOSECURITY=<tok>" https://users.roblox.com/v1/users/authenticated (harus balas {"sub":...,"name":...}). Body server: {"errors":[{"code":9002,"subcode":1,"message":"User is not authenticated"}]}
+                                Export ulang token FRESH (jangan reuse di clone lain).
+
+                                                                                      Diagnostik pasca-launch (DB mana yang menyimpan token + file lain):
+                                                                                                                                                         [01:43:35] [INFO] CookieInjector: using sqlite runner: env PATH=/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib /data/data/com.termux/f ...
+                                       /data/data/com.apengjers.v3/app_webview/Default/Cookies -> len=1200, count=1
+                                                                                                                   File lain yang berisi token:
+                                                                                                                                                 /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-011700
+                                                               /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-004544
+                                                                                                                                            /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-014330
+                                                          /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-003758
+                                                                                                                                       /data/data/com.apengjers.v3/app_webview/Default/Cookies
+                                 /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260925-235259
+                                                                                                              /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260925-235550
+                            /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-011125
+                                                                                                         /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260925-234638
+                       /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-002236
+                                                                                                    /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260925-234923
+                  /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-000056
+                                                                                               /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260925-234405
+             /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-005418
+                                                                                          /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-013435
+        /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-012652
+                                                                                     /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-002945
+   /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-002528
+                                                                                /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-010959
+                                                                                                                                                             /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-001748
+
+                                                                         Inject + launch selesai.
+
+                                                                                                 Selesai. Script keluar otomatis. Jalankan lagi dengan: lua main.lua
