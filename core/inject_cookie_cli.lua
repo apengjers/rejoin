@@ -114,6 +114,10 @@ function CLI.run()
                                 print("[GAGAL] Session di-REVOKE Roblox setelah inject/dibuka: " .. tostring(stillMsg))
                                 print("        Export ulang token FRESH (jangan reuse di clone lain).")
                             end
+                            print("")
+                            print("Diagnostik pasca-launch (DB mana yang menyimpan token + file lain):")
+                            print(CookieInjector.probeToken(inst, token))
+                            print("")
                             exitAfter("Inject + launch selesai.")
                         else
                             exitAfter("[GAGAL] " .. tostring(msg))

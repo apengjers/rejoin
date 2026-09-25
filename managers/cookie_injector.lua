@@ -105,17 +105,22 @@ local function resolveSqlite3(db)
     return nil
 end
 
--- First file named "Cookies" found under base (app_webview/Default first, then a
--- shallow search for modded layouts). Returns nil when nothing is found.
-local function locateCookieDb(base)
-    local default = base .. "/app_webview/Default/Cookies"
-    local ok = existsFile(default)
-    if ok then return default end
-    if ok == nil then return nil end -- base unreadable -> indeterminate
-
-    local out = exec(string.format("find %s -maxdepth 5 -type f -name Cookies 2>/dev/null | head -n 1", quote(base)))
-    if out and out ~= "" then return out end
-    return nil
+-- Every file named "Cookies" under base (covers app_webview/<profile>/... plus any
+-- modded layout). Returns nil when the base dir is unreachable, an (possibly empty)
+-- array otherwise. Sorted so the Default profile comes first (injected first).
+local function locateCookieDbs(base)
+    local out = exec(string.format("find %s -maxdepth 6 -type f -name Cookies 2>/dev/null", quote(base)))
+    if not out then return nil end
+    local dbs, seen = {}, {}
+    for line in (out .. "\n"):gmatch("(.-)\n") do
+        line = line:gsub("%s+$", "")
+        if line ~= "" and existsFile(line) and not seen[line] then
+            seen[line] = true
+            dbs[#dbs + 1] = line
+        end
+    end
+    table.sort(dbs)
+    return dbs
 end
 
 -- Row shape matching the row a real in-app WebView login writes (verified against the
@@ -289,102 +294,122 @@ function CookieInjector.inject(instance, token)
     APK.forceStop(pkg)
     Timer.sleep(1)
 
-    -- 2) Locate the Cookies DB.
-    local db = locateCookieDb(base)
-    if not db then
+    -- 2) Enumerate EVERY Cookies DB under the base dir (a Lite/mod clone can keep its
+    --    live WebView profile under a non-"Default" directory; writing only the first
+    --    DB found would "succeed" but touch a store the app never reads).
+    local dbs = locateCookieDbs(base)
+    if dbs == nil then
+        return false, "Base dir '" .. base .. "' tidak bisa dibaca (periksa izin root)."
+    end
+    if #dbs == 0 then
         return false, "Cookies DB tidak ditemukan di '" .. base .. "'. Kalau clone mod/Lite, set per-instance 'cookiePath' di config."
     end
-    Logger.info("CookieInjector: target DB " .. db)
+    Logger.info("CookieInjector: target " .. #dbs .. " Cookies DB: " .. table.concat(dbs, ", "))
 
-    -- 3) sqlite3 must be resolvable (Termux install usually needs PATH/LD_LIBRARY_PATH).
-    local runner = resolveSqlite3(db)
+    -- 3) sqlite3 must be resolvable (same runner is used for every DB found).
+    local runner = resolveSqlite3(dbs[1])
     if not runner then
         return false, "sqlite3 tidak terpasang / tidak dapat dijalankan. Install: pkg install sqlite (Termux)"
     end
 
-    -- 4) Backup first (restore point if the token needs to be removed later).
     local stamp = os.date("%Y%m%d-%H%M%S")
-    local backup = db .. ".bak-" .. stamp
-    exec("cp -a " .. quote(db) .. " " .. quote(backup))
-    Logger.info("CookieInjector: backup -> " .. backup)
-
-    -- 5) Remove any stale/half-written `.ROBLOSECURITY` rows first, then INSERT a
-    --    single clean row (faulty old rows use host_key="roblox.com" / a non-empty
-    --    top_frame_site_key and would only confuse cookie matching).
     local nowLit = webkitNow()
-    exec(runner .. " " .. quote(db) .. " \"DELETE FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%.roblox.com%';\"")
-    local cols, vals = buildInsertSpec(runner, db, token, nowLit)
-    local sql = string.format(
-        "INSERT OR REPLACE INTO cookies (%s) VALUES (%s);",
-        table.concat(cols, ", "), table.concat(vals, ", ")
-    )
-    local insertOut = exec(runner .. " " .. quote(db) .. " '" .. sql:gsub("'", "'\\''") .. "'")
-    if insertOut and insertOut ~= "" then
-        Logger.warn("CookieInjector: sqlite3 output: " .. insertOut)
-    else
-        Logger.info("CookieInjector: sqlite3 output: (none)")
-    end
+    local written, failures = {}, {}
+    for _, db in ipairs(dbs) do
+        -- 4) Backup first (restore point if the token needs to be removed later).
+        local backup = db .. ".bak-" .. stamp
+        exec("cp -a " .. quote(db) .. " " .. quote(backup))
+        Logger.info("CookieInjector: backup -> " .. backup)
 
-    -- 6) Fold any WAL data into the main DB.
-    exec(runner .. " " .. quote(db) .. " 'PRAGMA wal_checkpoint(TRUNCATE);'")
-
-    -- 7) Verify exactly one clean `.ROBLOSECURITY` row is stored AND that its value
-    --    survived the shell-roundtrip intact (a truncated/mangled value still ends up
-    --    non-empty, which the old `>0` check let through -> silent "inject ok but not
-    --    logged in").
-    local verify = exec(string.format(
-        "%s %s \"SELECT length(value) || '|' || COUNT(*) FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%%.roblox.com%%' GROUP BY length(value);\"",
-        runner, quote(db)
-    ))
-    Auth.resetCache()
-    if not verify then
-        return false, "Injeksi mungkin gagal (verifikasi tidak terbaca). SQLite output: " .. tostring(insertOut or "(none)") .. " | Backup: " .. backup
-    end
-    local len, cnt = verify:match("^(%d+)|(%d+)%s*$")
-    len = tonumber(len)
-    cnt = tonumber(cnt)
-    if len == nil or len == 0 or cnt ~= 1 then
-        return false, "Injeksi mungkin gagal (value tidak tersimpan / jumlah baris bukan 1). SQLite output: " .. tostring(insertOut or "(none)") .. " | Verify: " .. tostring(verify) .. " | Backup: " .. backup
-    end
-    if len ~= #token then
-        return false, string.format(
-            "INJECT TERPOTONG/RUSAK: value tersimpan %d char, token asal %d char (Verify: %s | Backup: %s). Jangan inject token berisi karakter aneh.",
-            len, #token, tostring(verify), backup
+        -- 5) Remove any stale/half-written `.ROBLOSECURITY` rows first, then INSERT a
+        --    single clean row (faulty old rows use host_key="roblox.com" / a non-empty
+        --    top_frame_site_key and would only confuse cookie matching).
+        exec(runner .. " " .. quote(db) .. " \"DELETE FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%.roblox.com%';\"")
+        local cols, vals = buildInsertSpec(runner, db, token, nowLit)
+        local sql = string.format(
+            "INSERT OR REPLACE INTO cookies (%s) VALUES (%s);",
+            table.concat(cols, ", "), table.concat(vals, ", ")
         )
+        local insertOut = exec(runner .. " " .. quote(db) .. " '" .. sql:gsub("'", "'\\''") .. "'")
+        if insertOut and insertOut ~= "" then
+            Logger.warn("CookieInjector: sqlite3 output: " .. insertOut)
+        else
+            Logger.info("CookieInjector: sqlite3 output: (none)")
+        end
+
+        -- 6) Fold any WAL data into the main DB.
+        exec(runner .. " " .. quote(db) .. " 'PRAGMA wal_checkpoint(TRUNCATE);'")
+
+        -- 7) Verify exactly one clean `.ROBLOSECURITY` row is stored AND that its value
+        --    survived the shell-roundtrip intact (a truncated/mangled value still ends
+        --    up non-empty, which the old `>0` check let through).
+        local verify = exec(string.format(
+            "%s %s \"SELECT length(value) || '|' || COUNT(*) FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%%.roblox.com%%' GROUP BY length(value);\"",
+            runner, quote(db)
+        ))
+        if not verify then
+            failures[#failures + 1] = db .. " - verifikasi tidak terbaca (backup: " .. backup .. ")"
+        else
+            local len, cnt = verify:match("^(%d+)|(%d+)%s*$")
+            len = tonumber(len)
+            cnt = tonumber(cnt)
+            if len == nil or len == 0 or cnt ~= 1 then
+                failures[#failures + 1] = db .. " - value tidak tersimpan / baris bukan 1 (verify: " .. tostring(verify) .. ", backup: " .. backup .. ")"
+            elseif len ~= #token then
+                failures[#failures + 1] = string.format(
+                    "%s - INJECT TERPOTONG/RUSAK: tersimpan %d char, asal %d (verify: %s, backup: %s)",
+                    db, len, #token, tostring(verify), backup
+                )
+            else
+                written[#written + 1] = db
+            end
+        end
+    end
+    Auth.resetCache()
+
+    if #written == 0 then
+        return false, "Tidak ada Cookies DB yang berhasil di-inject. Detail:\n- " .. table.concat(failures, "\n- ")
     end
 
     Logger.info(string.format(
-        "CookieInjector: injected %d-char .ROBLOSECURITY into %s (db=%s, backup=%s)",
-        #token, pkg, db, backup
+        "CookieInjector: injected %d-char .ROBLOSECURITY into %s across %d Cookies DB",
+        #token, pkg, #written
     ))
-    return true, string.format(
-        "OK: cookie di-inject ke %s (%d char). DB: %s | Backup: %s",
-        pkg, #token, db, backup
+    local detail = string.format(
+        "OK: cookie di-inject ke %s (%d char) di %d Cookies DB.\nDB: %s",
+        pkg, #token, #written, table.concat(written, " | ")
     )
+    if #failures > 0 then
+        detail = detail .. "\n[WARN] Gagal sebagian:\n- " .. table.concat(failures, "\n- ")
+    end
+    return true, detail
 end
 
--- Debug: dump every cookie row of a clone's Cookies DB. The `.ROBLOSECURITY` value is
--- shown as its length only (no token leak). Returns (ok, message).
+-- Debug: dump every cookie row of EVERY Cookies DB under the instance. The
+-- `.ROBLOSECURITY` value is shown as its length only (no token leak). Returns
+-- (ok, message).
 function CookieInjector.dump(instance)
     local pkg = instance and instance.package
     if not pkg then return false, "Instance tidak punya package" end
     local base = Auth.getBaseDir(instance)
     if not base then return false, "Tidak bisa tentukan base dir instance" end
 
-    local db = locateCookieDb(base)
-    if not db then
+    local dbs = locateCookieDbs(base)
+    if dbs == nil then
+        return false, "Base dir '" .. base .. "' tidak bisa dibaca (periksa izin root)."
+    end
+    if #dbs == 0 then
         return false, "Cookies DB tidak ditemukan di '" .. base .. "'. Kalau clone mod/Lite, set per-instance 'cookiePath' di config."
     end
-    Logger.info("CookieInjector: dump target DB " .. db)
 
-    local runner = resolveSqlite3(db)
+    local runner = resolveSqlite3(dbs[1])
     if not runner then
         return false, "sqlite3 tidak terpasang / tidak dapat dijalankan. Install: pkg install sqlite (Termux)"
     end
 
     -- Column order from the real schema.
     local colOrder = {}
-    local schemaOut = exec(string.format("%s %s \"PRAGMA table_info(cookies);\"", runner, quote(db)))
+    local schemaOut = exec(string.format("%s %s \"PRAGMA table_info(cookies);\"", runner, quote(dbs[1])))
     for line in (schemaOut or ""):gmatch("(.-)\n") do
         local name = line:match("^%d+|([^|]+)")
         if name then colOrder[#colOrder + 1] = name end
@@ -402,13 +427,77 @@ function CookieInjector.dump(instance)
         end
     end
     local sql = "SELECT " .. table.concat(selectList, ", ") .. " FROM cookies;"
-    local rowsOut = exec(string.format("%s %s \".mode line\" \"%s\"", runner, quote(db), sql))
-    if not rowsOut then
-        return false, "Dump gagal (tidak ada output)."
+
+    local parts = {}
+    for _, db in ipairs(dbs) do
+        local rowsOut = exec(string.format("%s %s \".mode line\" \"%s\"", runner, quote(db), sql))
+        parts[#parts + 1] = "=== " .. db .. " ==="
+        if not rowsOut or rowsOut == "" then
+            parts[#parts + 1] = "(kosong / tanpa baris)"
+        else
+            parts[#parts + 1] = rowsOut
+        end
     end
     Auth.resetCache()
-    Logger.info("CookieInjector: dumped " .. tostring(instance and instance.package or "?") .. " cookie DB:")
-    return true, rowsOut
+    Logger.info("CookieInjector: dumped " .. tostring(instance and instance.package or "?") .. " cookie DBs:")
+    return true, table.concat(parts, "\n")
+end
+
+-- List every Cookies DB under the instance (modded clones may keep a live profile
+-- outside app_webview/Default). Returns nil (unreadable) or an array of paths.
+function CookieInjector.listDbs(instance)
+    local base = Auth.getBaseDir(instance)
+    if not base then return nil end
+    return locateCookieDbs(base)
+end
+
+-- Post-launch probe: for every Cookies DB prints the injected row's `len|count`,
+-- and greps the instance data dir for any OTHER file holding the token (a sign the
+-- mod keeps its session outside the WebView store).
+function CookieInjector.probeToken(instance, token)
+    local base = Auth.getBaseDir(instance)
+    if not base then return "(base dir tidak terbaca)" end
+    local lines = {}
+    local dbs = locateCookieDbs(base)
+    if dbs and #dbs > 0 then
+        local runner = resolveSqlite3(dbs[1])
+        for _, db in ipairs(dbs) do
+            local status = "(sqlite runner tidak ada)"
+            if runner then
+                local v = exec(string.format(
+                    "%s %s \"SELECT length(value) || '|' || COUNT(*) FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%%.roblox.com%%' GROUP BY length(value);\"",
+                    runner, quote(db)
+                ))
+                v = v and v:gsub("%s+$", "") or ""
+                if v:find("^%d+|%d+$") then
+                    local lenPart, cntPart = v:match("^(%d+)|(%d+)$")
+                    status = "len=" .. tostring(lenPart) .. ", count=" .. tostring(cntPart)
+                else
+                    status = "tidak ada baris / " .. tostring(v == "" and "(kosong)" or v)
+                end
+            end
+            lines[#lines + 1] = db .. " -> " .. status
+        end
+    elseif dbs then
+        lines[#lines + 1] = "(tidak ada Cookies DB)"
+    else
+        lines[#lines + 1] = "(base dir tidak bisa dibaca)"
+    end
+
+    local prefix = token and token:sub(1, 30) or ""
+    if prefix ~= "" then
+        local g = exec(string.format("grep -a -r -l -F %s %s 2>/dev/null | head -n 20", quote(prefix), quote(base)))
+        if g and g ~= "" then
+            lines[#lines + 1] = "File lain yang berisi token:"
+            for line in (g .. "\n"):gmatch("(.-)\n") do
+                line = line:gsub("%s+$", "")
+                if line ~= "" then lines[#lines + 1] = "  " .. line end
+            end
+        else
+            lines[#lines + 1] = "File lain berisi token: (tidak ada -> HANYA Cookies DB)"
+        end
+    end
+    return table.concat(lines, "\n")
 end
 
 return CookieInjector
