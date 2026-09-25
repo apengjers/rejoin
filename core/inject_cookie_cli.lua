@@ -9,6 +9,19 @@ local function prompt(msg)
     return io.read()
 end
 
+-- Read a (potentially huge) token, then immediately wipe the echoed paste line from
+-- the screen. A 1170-char paste renders as one giant line that can stall the Termux UI
+-- and eat subsequent keystrokes (Enter included), so it must be erased right after the
+-- read while input is still responsive.
+local function readToken(msg)
+    io.write(msg)
+    io.flush()
+    local t = io.read() or ""
+    io.write("\r\27[2K") -- carriage return + clear entire current line (echoed paste)
+    io.flush()
+    return t:gsub("^%s+", ""):gsub("%s+$", "")
+end
+
 local function listInstances()
     local list = InstanceManager.getAll()
     if #list == 0 then
@@ -36,6 +49,27 @@ local function pickInstance()
     return inst
 end
 
+-- One-shot flow: after an action prints its result we consume any leftover stdin
+-- (a big token paste can desync the Termux keyboard/buffer) then return to the main
+-- menu, so the user never sits stuck in this submenu. The screen is cleared first:
+-- forcing a full repaint re-syncs the Termux surface after a heavy paste.
+local function backToMain()
+    io.write("\27[2J\27[H") -- clear screen + cursor home
+    io.flush()
+    print("[Selesai] Tekan Enter untuk kembali ke menu utama")
+    io.read()
+end
+
+-- Token actions (inject / cek validitas) do a huge paste, after which the terminal's
+-- input pipeline can silently die. So they never wait for input again: print the
+-- result and exit the process right away, dropping back to the shell. No further
+-- io.read(), no stuck submenu/menu.
+local function exitAfter(msg)
+    print(tostring(msg))
+    print("\nSelesai. Script keluar otomatis. Jalankan lagi dengan: lua main.lua")
+    os.exit(0)
+end
+
 function CLI.run()
     while true do
         print("\nInject Cookie:\n  1) Inject .ROBLOSECURITY ke instance\n  2) Dump cookies (debug)\n  3) Cek validitas token\n  4) Exit\n")
@@ -44,19 +78,52 @@ function CLI.run()
         if choice == "1" then
             local inst = pickInstance()
             if inst then
-                local token = prompt("Cookie .ROBLOSECURITY: ") or ""
-                token = token:gsub("^%s+", ""):gsub("%s+$", "")
+                print("")
+                print("=============================================================")
+                print(" 1 token = 1 clone = 1 akun.")
+                print(" Token yang dipakai di >1 clone/device beruntun -> Roblox")
+                print(" force-logout SEMUA sesi (termasuk browser sumber) + rotasi.")
+                print(" Untuk tiap clone gunakan eksport token yang BEDA.")
+                print("=============================================================")
+                local token = readToken("Cookie .ROBLOSECURITY: ")
                 if token == "" then
-                    print("Token kosong, dibatalkan.")
+                    exitAfter("[GAGAL] Token kosong, dibatalkan.")
                 else
-                    local confirm = prompt(string.format("Inject cookie (%d char) ke %s? Force-stop app dulu. type 'yes': ", #token, tostring(inst.package or ""))) or ""
-                    if confirm:lower() == "yes" then
+                    local confirm = prompt(string.format("Inject cookie (%d char) ke %s? Force-stop app dulu. type 'y': ", #token, tostring(inst.package or ""))) or ""
+                    if confirm:lower() == "y" then
                         local ok, msg = CookieInjector.inject(inst, token)
-                        print(ok and ("[OK] " .. tostring(msg)) or ("[GAGAL] " .. tostring(msg)))
+                        if ok then
+                            print("[OK] " .. tostring(msg))
+                            -- The app was force-stopped by inject; launch it right away so
+                            -- it authenticates against Roblox immediately (narrows the
+                            -- server-side revoke window) and re-check the session a few
+                            -- seconds later so we KNOW whether login should have happened.
+                            local APK = require("managers.apk")
+                            local Timer = require("utils.timer")
+                            print("Membuka " .. tostring(inst.package or "") .. "...")
+                            local lOk, lOut = APK.launch(inst.package)
+                            if not lOk then
+                                print("[WARN] Gagal membuka app otomatis: " .. tostring(lOut or "(tanpa output)"))
+                            end
+                            Timer.sleep(4)
+                            local stillOk, stillMsg = CookieInjector.verifyRemote(token)
+                            if stillOk then
+                                print("[CEK] Session masih VALID setelah app dibuka (akun tidak di-revoke).")
+                                print("      Buka app -> jika avatar/username muncul, login SUKSES.")
+                            else
+                                print("[GAGAL] Session di-REVOKE Roblox setelah inject/dibuka: " .. tostring(stillMsg))
+                                print("        Export ulang token FRESH (jangan reuse di clone lain).")
+                            end
+                            exitAfter("Inject + launch selesai.")
+                        else
+                            exitAfter("[GAGAL] " .. tostring(msg))
+                        end
                     else
-                        print("Dibatalkan")
+                        exitAfter("Dibatalkan")
                     end
                 end
+            else
+                exitAfter("[GAGAL] Instances dibutuhkan untuk inject.")
             end
         elseif choice == "2" then
             local inst = pickInstance()
@@ -70,14 +137,15 @@ function CLI.run()
                     print("[GAGAL] " .. tostring(msg))
                 end
             end
+            backToMain()
+            break
         elseif choice == "3" then
-            local token = prompt("Cookie .ROBLOSECURITY: ") or ""
-            token = token:gsub("^%s+", ""):gsub("%s+$", "")
+            local token = readToken("Cookie .ROBLOSECURITY: ")
             if token == "" then
-                print("Token kosong, dibatalkan.")
+                exitAfter("[GAGAL] Token kosong, dibatalkan.")
             else
                 local ok, msg = CookieInjector.verifyRemote(token)
-                print(ok and ("[VALID] " .. tostring(msg)) or ("[GAGAL] " .. tostring(msg)))
+                exitAfter(ok and ("[VALID] " .. tostring(msg)) or ("[GAGAL] " .. tostring(msg)))
             end
         elseif choice == "4" then
             print("Exiting Inject Cookie")

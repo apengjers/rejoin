@@ -328,20 +328,29 @@ function CookieInjector.inject(instance, token)
     -- 6) Fold any WAL data into the main DB.
     exec(runner .. " " .. quote(db) .. " 'PRAGMA wal_checkpoint(TRUNCATE);'")
 
-    -- 7) Verify exactly one clean `.ROBLOSECURITY` row is stored.
+    -- 7) Verify exactly one clean `.ROBLOSECURITY` row is stored AND that its value
+    --    survived the shell-roundtrip intact (a truncated/mangled value still ends up
+    --    non-empty, which the old `>0` check let through -> silent "inject ok but not
+    --    logged in").
     local verify = exec(string.format(
         "%s %s \"SELECT length(value) || '|' || COUNT(*) FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%%.roblox.com%%' GROUP BY length(value);\"",
         runner, quote(db)
     ))
     Auth.resetCache()
     if not verify then
-        return false, "Injeksi mungkin gagal (verifikasi tidak terbaca). Output: " .. tostring(insertOut or "(none)") .. " | Backup: " .. backup
+        return false, "Injeksi mungkin gagal (verifikasi tidak terbaca). SQLite output: " .. tostring(insertOut or "(none)") .. " | Backup: " .. backup
     end
     local len, cnt = verify:match("^(%d+)|(%d+)%s*$")
     len = tonumber(len)
     cnt = tonumber(cnt)
     if len == nil or len == 0 or cnt ~= 1 then
-        return false, "Injeksi mungkin gagal (value tidak tersimpan / jumlah baris bukan 1). Output: " .. tostring(insertOut or "(none)") .. " | Verify: " .. tostring(verify) .. " | Backup: " .. backup
+        return false, "Injeksi mungkin gagal (value tidak tersimpan / jumlah baris bukan 1). SQLite output: " .. tostring(insertOut or "(none)") .. " | Verify: " .. tostring(verify) .. " | Backup: " .. backup
+    end
+    if len ~= #token then
+        return false, string.format(
+            "INJECT TERPOTONG/RUSAK: value tersimpan %d char, token asal %d char (Verify: %s | Backup: %s). Jangan inject token berisi karakter aneh.",
+            len, #token, tostring(verify), backup
+        )
     end
 
     Logger.info(string.format(
