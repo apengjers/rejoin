@@ -1,0 +1,10 @@
+[00:25:26] [INFO] CookieInjector: token VALID remote (code 200)
+                                                               [00:25:26] [INFO] APKManager: force stopping: com.apengjers.v3
+                                                                                                                             [00:25:28] [INFO] CookieInjector: target DB /data/data/com.apengjers.v3/app_webview/Default/Cookies
+                                                                 [00:25:28] [INFO] CookieInjector: using sqlite runner: env PATH=/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib /data/data/com.termux/f ...
+                                                                                                              [00:25:28] [INFO] CookieInjector: backup -> /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-002528
+                                                                      [00:25:28] [INFO] CookieInjector: sqlite3 output: (none)
+                                                                                                                              [00:25:28] [INFO] CookieInjector: injected 1200-char .ROBLOSECURITY into com.apengjers.v3 (db=/data/data/com.apengjers.v3/app_webview/Default/Cookies, backup=/data/data/com.apengjers.v3/app_webview/De ...
+            [OK] OK: cookie di-inject ke com.apengjers.v3 (1200 char). DB: /data/data/com.apengjers.v3/app_webview/Default/Cookies | Backup: /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260926-002528
+
+                                                         Selesai. Script keluar otomatis. Jalankan lagi dengan: lua main.lua

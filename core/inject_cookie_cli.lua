@@ -85,7 +85,30 @@ function CLI.run()
                     local confirm = prompt(string.format("Inject cookie (%d char) ke %s? Force-stop app dulu. type 'y': ", #token, tostring(inst.package or ""))) or ""
                     if confirm:lower() == "y" then
                         local ok, msg = CookieInjector.inject(inst, token)
-                        exitAfter(ok and ("[OK] " .. tostring(msg)) or ("[GAGAL] " .. tostring(msg)))
+                        if ok then
+                            print("[OK] " .. tostring(msg))
+                            -- The app was force-stopped by inject; launch it right away so
+                            -- it authenticates against Roblox immediately (narrows the
+                            -- server-side revoke window) and re-check the session a few
+                            -- seconds later so we KNOW whether login should have happened.
+                            local APK = require("managers.apk")
+                            local Timer = require("utils.timer")
+                            print("Membuka " .. tostring(inst.package or "") .. "...")
+                            local lOk, lOut = APK.launch(inst.package)
+                            if not lOk then
+                                print("[WARN] Gagal membuka app otomatis: " .. tostring(lOut or "(tanpa output)"))
+                            end
+                            Timer.sleep(4)
+                            local stillOk, stillMsg = CookieInjector.verifyRemote(token)
+                            if stillOk then
+                                print("[CEK] Session masih VALID setelah app dibuka. Kalau app tetap di layar login, itu murni masalah database/WebView, bukan token.")
+                            else
+                                print("[GAGAL] Session di-REVOKE Roblox setelah inject/dibuka: " .. tostring(stillMsg))
+                            end
+                            exitAfter("Inject + launch selesai.")
+                        else
+                            exitAfter("[GAGAL] " .. tostring(msg))
+                        end
                     else
                         exitAfter("Dibatalkan")
                     end
