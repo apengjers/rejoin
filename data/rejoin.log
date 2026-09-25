@@ -1,0 +1,24 @@
+[16:12:01] [INFO] BOOT
+[16:12:01] [INFO] MENU
+[16:12:01] [INFO] Setup: config exists: config/config.lua
+[16:12:17] [INFO] CookieInjector: token VALID remote (code 200)
+[16:13:25] [INFO] BOOT
+[16:13:25] [INFO] MENU
+[16:13:25] [INFO] Setup: config exists: config/config.lua
+[16:13:34] [INFO] CookieInjector: token VALID remote (code 200)
+[16:13:35] [INFO] APKManager: force stopping: com.apengjers.v3
+[16:13:36] [INFO] CookieInjector: target DB /data/data/com.apengjers.v3/app_webview/Default/Cookies
+[16:13:36] [INFO] CookieInjector: using sqlite runner: env PATH=/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib /data/data/com.termux/files/usr/bin/sqlite3
+[16:13:36] [INFO] CookieInjector: backup -> /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260925-161336
+[16:13:36] [INFO] CookieInjector: sqlite3 output: (none)
+[16:13:36] [INFO] CookieInjector: injected 1170-char .ROBLOSECURITY into com.apengjers.v3 (db=/data/data/com.apengjers.v3/app_webview/Default/Cookies, backup=/data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260925-161336)
+[16:15:39] [INFO] BOOT
+[16:15:39] [INFO] MENU
+[16:15:40] [INFO] Setup: config exists: config/config.lua
+[16:15:47] [INFO] CookieInjector: token VALID remote (code 200)
+[16:15:47] [INFO] APKManager: force stopping: com.apengjers.v3
+[16:15:48] [INFO] CookieInjector: target DB /data/data/com.apengjers.v3/app_webview/Default/Cookies
+[16:15:48] [INFO] CookieInjector: using sqlite runner: env PATH=/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib /data/data/com.termux/files/usr/bin/sqlite3
+[16:15:49] [INFO] CookieInjector: backup -> /data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260925-161548
+[16:15:49] [INFO] CookieInjector: sqlite3 output: (none)
+[16:15:49] [INFO] CookieInjector: injected 1196-char .ROBLOSECURITY into com.apengjers.v3 (db=/data/data/com.apengjers.v3/app_webview/Default/Cookies, backup=/data/data/com.apengjers.v3/app_webview/Default/Cookies.bak-20260925-161548)
