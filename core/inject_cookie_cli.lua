@@ -60,6 +60,16 @@ local function backToMain()
     io.read()
 end
 
+-- Token actions (inject / cek validitas) do a huge paste, after which the terminal's
+-- input pipeline can silently die. So they never wait for input again: print the
+-- result and exit the process right away, dropping back to the shell. No further
+-- io.read(), no stuck submenu/menu.
+local function exitAfter(msg)
+    print(tostring(msg))
+    print("\nSelesai. Script keluar otomatis. Jalankan lagi dengan: lua main.lua")
+    os.exit(0)
+end
+
 function CLI.run()
     while true do
         print("\nInject Cookie:\n  1) Inject .ROBLOSECURITY ke instance\n  2) Dump cookies (debug)\n  3) Cek validitas token\n  4) Exit\n")
@@ -70,19 +80,19 @@ function CLI.run()
             if inst then
                 local token = readToken("Cookie .ROBLOSECURITY: ")
                 if token == "" then
-                    print("Token kosong, dibatalkan.")
+                    exitAfter("[GAGAL] Token kosong, dibatalkan.")
                 else
-                    local confirm = prompt(string.format("Inject cookie (%d char) ke %s? Force-stop app dulu. type 'yes': ", #token, tostring(inst.package or ""))) or ""
-                    if confirm:lower() == "yes" then
+                    local confirm = prompt(string.format("Inject cookie (%d char) ke %s? Force-stop app dulu. type 'y': ", #token, tostring(inst.package or ""))) or ""
+                    if confirm:lower() == "y" then
                         local ok, msg = CookieInjector.inject(inst, token)
-                        print(ok and ("[OK] " .. tostring(msg)) or ("[GAGAL] " .. tostring(msg)))
+                        exitAfter(ok and ("[OK] " .. tostring(msg)) or ("[GAGAL] " .. tostring(msg)))
                     else
-                        print("Dibatalkan")
+                        exitAfter("Dibatalkan")
                     end
                 end
+            else
+                exitAfter("[GAGAL] Instances dibutuhkan untuk inject.")
             end
-            backToMain()
-            break
         elseif choice == "2" then
             local inst = pickInstance()
             if inst then
@@ -100,13 +110,11 @@ function CLI.run()
         elseif choice == "3" then
             local token = readToken("Cookie .ROBLOSECURITY: ")
             if token == "" then
-                print("Token kosong, dibatalkan.")
+                exitAfter("[GAGAL] Token kosong, dibatalkan.")
             else
                 local ok, msg = CookieInjector.verifyRemote(token)
-                print(ok and ("[VALID] " .. tostring(msg)) or ("[GAGAL] " .. tostring(msg)))
+                exitAfter(ok and ("[VALID] " .. tostring(msg)) or ("[GAGAL] " .. tostring(msg)))
             end
-            backToMain()
-            break
         elseif choice == "4" then
             print("Exiting Inject Cookie")
             break
