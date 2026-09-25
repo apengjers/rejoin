@@ -229,18 +229,24 @@ function CookieInjector.verifyRemote(token)
         return false, "curl tidak ditemukan (pkg install curl) - tidak bisa verifikasi token, inject dibatalkan"
     end
 
-    local outFile = "/data/local/tmp/ci_auth_$$.json"
-    exec("rm -f " .. outFile)
+    -- Single curl call: body + HTTP code both on stdout (`-w '\n%{http_code}'`), so no
+    -- temp file race (a previous version wrote `-o ...$$.json` then cat it from a NEW
+    -- su shell, where `$$` is a different PID -> body always "empty").
     local out = exec(string.format(
-        "%s -s -o %s -w '%%{http_code}' -H 'Cookie: .ROBLOSECURITY=%s' https://users.roblox.com/v1/users/authenticated",
-        curlBin, outFile, token
+        "%s -s -w '\n%%{http_code}' -H 'Cookie: .ROBLOSECURITY=%s' https://users.roblox.com/v1/users/authenticated",
+        curlBin, token
     ))
-    local body = exec("cat " .. outFile .. " 2>/dev/null")
-    exec("rm -f " .. outFile)
+    if not out then
+        return false, "Verifikasi remote gagal (curl tidak menghasilkan output - cek jaringan)."
+    end
 
-    local codeStr = (out or ""):gsub("%s+", "")
+    local body, codeStr = out:match("^(.-)\n(%d+)$")
+    if not body then
+        body, codeStr = out, out:match("(%d+)$")
+    end
     local code = tonumber(codeStr)
-    local snippet = (body or "(kosong)"):gsub("%s+", " "):sub(1, 160)
+    local snippet = (body or ""):gsub("%s+", " "):sub(1, 160)
+    if snippet == "" then snippet = "(kosong)" end
 
     if code == 200 and body and body:find('"name"') and not body:find('"errors"') then
         Logger.info("CookieInjector: token VALID remote (code 200)")
