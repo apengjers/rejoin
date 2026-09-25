@@ -36,6 +36,14 @@ local function pickInstance()
     return inst
 end
 
+-- One-shot flow: after an action prints its result we consume any leftover stdin
+-- (a big token paste can desync the Termux keyboard/buffer) then return to the main
+-- menu, so the user never sits stuck in this submenu.
+local function backToMain()
+    print("\n[Selesai] Tekan Enter untuk kembali ke menu utama")
+    io.read()
+end
+
 function CLI.run()
     while true do
         print("\nInject Cookie:\n  1) Inject .ROBLOSECURITY ke instance\n  2) Dump cookies (debug)\n  3) Cek validitas token\n  4) Exit\n")
@@ -58,6 +66,8 @@ function CLI.run()
                     end
                 end
             end
+            backToMain()
+            break
         elseif choice == "2" then
             local inst = pickInstance()
             if inst then
@@ -70,6 +80,8 @@ function CLI.run()
                     print("[GAGAL] " .. tostring(msg))
                 end
             end
+            backToMain()
+            break
         elseif choice == "3" then
             local token = prompt("Cookie .ROBLOSECURITY: ") or ""
             token = token:gsub("^%s+", ""):gsub("%s+$", "")
@@ -79,6 +91,8 @@ function CLI.run()
                 local ok, msg = CookieInjector.verifyRemote(token)
                 print(ok and ("[VALID] " .. tostring(msg)) or ("[GAGAL] " .. tostring(msg)))
             end
+            backToMain()
+            break
         elseif choice == "4" then
             print("Exiting Inject Cookie")
             break
