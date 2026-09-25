@@ -9,6 +9,19 @@ local function prompt(msg)
     return io.read()
 end
 
+-- Read a (potentially huge) token, then immediately wipe the echoed paste line from
+-- the screen. A 1170-char paste renders as one giant line that can stall the Termux UI
+-- and eat subsequent keystrokes (Enter included), so it must be erased right after the
+-- read while input is still responsive.
+local function readToken(msg)
+    io.write(msg)
+    io.flush()
+    local t = io.read() or ""
+    io.write("\r\27[2K") -- carriage return + clear entire current line (echoed paste)
+    io.flush()
+    return t:gsub("^%s+", ""):gsub("%s+$", "")
+end
+
 local function listInstances()
     local list = InstanceManager.getAll()
     if #list == 0 then
@@ -38,9 +51,12 @@ end
 
 -- One-shot flow: after an action prints its result we consume any leftover stdin
 -- (a big token paste can desync the Termux keyboard/buffer) then return to the main
--- menu, so the user never sits stuck in this submenu.
+-- menu, so the user never sits stuck in this submenu. The screen is cleared first:
+-- forcing a full repaint re-syncs the Termux surface after a heavy paste.
 local function backToMain()
-    print("\n[Selesai] Tekan Enter untuk kembali ke menu utama")
+    io.write("\27[2J\27[H") -- clear screen + cursor home
+    io.flush()
+    print("[Selesai] Tekan Enter untuk kembali ke menu utama")
     io.read()
 end
 
@@ -52,8 +68,7 @@ function CLI.run()
         if choice == "1" then
             local inst = pickInstance()
             if inst then
-                local token = prompt("Cookie .ROBLOSECURITY: ") or ""
-                token = token:gsub("^%s+", ""):gsub("%s+$", "")
+                local token = readToken("Cookie .ROBLOSECURITY: ")
                 if token == "" then
                     print("Token kosong, dibatalkan.")
                 else
@@ -83,8 +98,7 @@ function CLI.run()
             backToMain()
             break
         elseif choice == "3" then
-            local token = prompt("Cookie .ROBLOSECURITY: ") or ""
-            token = token:gsub("^%s+", ""):gsub("%s+$", "")
+            local token = readToken("Cookie .ROBLOSECURITY: ")
             if token == "" then
                 print("Token kosong, dibatalkan.")
             else

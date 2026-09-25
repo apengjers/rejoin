@@ -51,6 +51,11 @@ local logLevel = loadLogLevelFromConfig() or "INFO"
 -- dashboard around. Defaults to true (normal behavior outside monitoring).
 local consoleVisible = true
 
+-- Longest log line echoed to the console. A single huge line (e.g. a shell command
+-- embedding a pasted token when logLevel=DEBUG) can stall Termux's rendering and
+-- swallow subsequent keystrokes. The log file always keeps the full line.
+local CONSOLE_MAX = 200
+
 local levelsOrder = {
     DEBUG = 1,
     INFO = 2,
@@ -92,6 +97,11 @@ end
 local fromConfig = loadLogPathFromConfig()
 if fromConfig then logFilePath = fromConfig end
 
+local function consoleSafe(line)
+    if #line <= CONSOLE_MAX then return line end
+    return line:sub(1, CONSOLE_MAX) .. " ..."
+end
+
 local function log(level, message)
     local levelOrder = levelsOrder[level] or levelsOrder.INFO
     local minOrder = levelsOrder[logLevel] or levelsOrder.INFO
@@ -103,7 +113,7 @@ local function log(level, message)
     -- Always write to the file; only echo to the console when it's not hidden behind a
     -- full-screen dashboard (consoleVisible == false while monitoring).
     if consoleVisible then
-        print(line)
+        print(consoleSafe(line))
     end
     pcall(function() appendLogToFile(line) end)
 end
