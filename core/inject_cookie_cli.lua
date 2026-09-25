@@ -78,6 +78,13 @@ function CLI.run()
         if choice == "1" then
             local inst = pickInstance()
             if inst then
+                print("")
+                print("=============================================================")
+                print(" 1 token = 1 clone = 1 akun.")
+                print(" Token yang dipakai di >1 clone/device beruntun -> Roblox")
+                print(" force-logout SEMUA sesi (termasuk browser sumber) + rotasi.")
+                print(" Untuk tiap clone gunakan eksport token yang BEDA.")
+                print("=============================================================")
                 local token = readToken("Cookie .ROBLOSECURITY: ")
                 if token == "" then
                     exitAfter("[GAGAL] Token kosong, dibatalkan.")
@@ -101,9 +108,11 @@ function CLI.run()
                             Timer.sleep(4)
                             local stillOk, stillMsg = CookieInjector.verifyRemote(token)
                             if stillOk then
-                                print("[CEK] Session masih VALID setelah app dibuka. Kalau app tetap di layar login, itu murni masalah database/WebView, bukan token.")
+                                print("[CEK] Session masih VALID setelah app dibuka (akun tidak di-revoke).")
+                                print("      Buka app -> jika avatar/username muncul, login SUKSES.")
                             else
                                 print("[GAGAL] Session di-REVOKE Roblox setelah inject/dibuka: " .. tostring(stillMsg))
+                                print("        Export ulang token FRESH (jangan reuse di clone lain).")
                             end
                             exitAfter("Inject + launch selesai.")
                         else

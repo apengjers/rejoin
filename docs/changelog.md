@@ -2,6 +2,8 @@
 
 ## Unreleased / Bug fixes
 
+- **Inject Cookie (rule pakai 1 clone = 1 akun)**: root cause "inject berhasil tapi ga kelogin" terakhir = **session di-revoke server-side karena satu token dipakai login ke banyak clone/device beruntun** (Roblox force-logout SEMUA sesi, termasuk browser sumber). Bukti log: token VALID (HTTP 200) sebelum inject (`00:45:43`) dan 4 detik setelah app dibuka (`00:45:49`), value utuh 1200 char (verifikasi ketat lolos) — jadi serialize inject/DB tidak bersalah; session mati *setelah* app authenticate. Kini opsi 1 mencetak **banner peringatan** sebelum paste: 1 token = 1 clone = 1 akun; token yang dipakai >1 clone → force-logout + rotasi. Rekomendasi hasil: untuk tiap clone, export + inject token akun yang BEDA, lalu verifikasi visual (avatar/username muncul = login sukses).
+
 - **Inject Cookie (login fix)**: verifikasi pasca-INSERT kini **ketat** — `length(value)` harus **persis sama dengan panjang token asal** (sebelumnya cukup `>0`, sehingga value yang terpotong/rusak di-shell masih lolos `[OK]` tetapi cookie invalid → app tetap di layar login). Mismatch → `[GAGAL] INJECT TERPOTONG/RUSAK` dengan angka char tersimpan vs asal + lokasi backup.
 - **Inject Cookie (auto-launch + re-check)**: setelah inject `[OK]`, CLI otomatis **membuka clone** (`APK.launch`) supaya app langsung authenticate ke Roblox (mempersempit jendela revoke session server-side dan menghapus langkah manual "buka app"), lalu **verifikasi ulang token via curl 4 detik setelah launch** dan mencetak `[CEK]` apakah session masih VALID atau sudah di-REVOKE. Ini memisahkan dua kelas kegagalan: (a) token di-revoke server (bukan bug inject), (b) session masih valid tapi app tetap di layar login → masalah DB/WebView yang nyata untuk diburu lebih jauh.
 
