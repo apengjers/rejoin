@@ -322,6 +322,17 @@ function CookieInjector.inject(instance, token)
         exec("cp -a " .. quote(db) .. " " .. quote(backup))
         Logger.info("CookieInjector: backup -> " .. backup)
 
+        -- 4b) Drop stale WebView transaction files left behind by a force-stopped app.
+        -- Chromium re-opens its cookie store in WAL mode and would replay these on
+        -- relaunch, shadowing the row we are about to write. Safe to remove while the
+        -- app is dead; they are recreated on next open.
+        for _, suffix in ipairs({ "-wal", "-shm", "-journal" }) do
+            local side = db .. suffix
+            local existed = existsFile(side)
+            exec("rm -f " .. quote(side))
+            Logger.info("CookieInjector: " .. (existed and "hapus stale " or "tidak ada ") .. side)
+        end
+
         -- 5) Remove any stale/half-written `.ROBLOSECURITY` rows first, then INSERT a
         --    single clean row (faulty old rows use host_key="roblox.com" / a non-empty
         --    top_frame_site_key and would only confuse cookie matching).
@@ -340,9 +351,27 @@ function CookieInjector.inject(instance, token)
             Logger.info("CookieInjector: sqlite3 output: (none)")
         end
 
-        -- 6) Fold any WAL data into the main DB.
-        local walOut = exec(runner .. " " .. quote(db) .. " 'PRAGMA wal_checkpoint(TRUNCATE);'")
-        if walOut and walOut ~= "" then Logger.info("CookieInjector: wal_checkpoint: " .. walOut) end
+        -- 6) Fold any WAL data into the main DB. `0|-1|-1` = connection opened the store
+        -- outside WAL mode (no files to fold) -> no-op; `1|..` = busy -> one retry.
+        local function checkpointIt()
+            return exec(runner .. " " .. quote(db) .. " 'PRAGMA wal_checkpoint(FULL);'")
+        end
+        local walOut = checkpointIt()
+        local busy, logFrames = (walOut or ""):match("^(.-)|(.-)|.-$")
+        if busy == "1" then
+            exec("sleep 0.2")
+            walOut = checkpointIt()
+            busy, logFrames = (walOut or ""):match("^(.-)|(.-)|.-$")
+        end
+        if walOut and walOut ~= "" then
+            if logFrames == "-1" then
+                Logger.info("CookieInjector: wal_checkpoint: " .. walOut .. " -> tidak ada WAL (no-op)")
+            elseif busy == "1" then
+                Logger.warn("CookieInjector: wal_checkpoint: " .. walOut .. " -> BUSY (WAL belum dilipat)")
+            else
+                Logger.info("CookieInjector: wal_checkpoint: " .. walOut .. " -> WAL dilipat ke DB utama")
+            end
+        end
 
         -- 7) Verify exactly one clean `.ROBLOSECURITY` row is stored AND that its value
         --    survived the shell-roundtrip intact (a truncated/mangled value still ends
@@ -549,13 +578,16 @@ function CookieInjector.dbInfo(db)
     local runner = resolveSqlite3(db)
     if not runner then return "sqlite runner tidak ada" end
     local ver = exec(runner .. " " .. quote(db) .. " 'PRAGMA user_version;'")
+    local jmode = exec(runner .. " " .. quote(db) .. " 'PRAGMA journal_mode;'")
+    local walSize = "0"
+    if existsFile(db .. "-wal") then walSize = exec("wc -c < '" .. (db:gsub("'", "'\\''")) .. "-wal' 2>/dev/null") end
     local cols = {}
     local schemaOut = exec(string.format("%s %s \"PRAGMA table_info(cookies);\"", runner, quote(db)))
     for l in (schemaOut or ""):gmatch("(.-)\n") do
         local name, typ = l:match("^%d+|([^|]+)|([^|]*)")
         if name then cols[#cols + 1] = name .. ":" .. typ end
     end
-    return string.format("user_version=%s | cols=%d [%s]", tostring(ver or "?"), #cols, table.concat(cols, ","))
+    return string.format("user_version=%s | journal_mode=%s | wal_size=%s | cols=%d [%s]", tostring(ver or "?"), tostring(jmode or "?"), tostring(walSize or "0"), #cols, table.concat(cols, ","))
 end
 
 return CookieInjector
