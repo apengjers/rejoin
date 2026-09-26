@@ -16,6 +16,7 @@ local autoLaunchFlag = false
 local configSource = nil
 local dryRun = false
 local clearCacheFlag = false
+local doctorFlag = false
 for i = 1, #args do
     local a = args[i]
     if a == "--headless" or a == "--no-interactive" then headless = true end
@@ -24,6 +25,7 @@ for i = 1, #args do
     if a == "--auto-launch" then autoLaunchFlag = true end
     if a == "--dry-run" then dryRun = true end
     if a == "--clear-cache" then clearCacheFlag = true end
+    if a == "--doctor" then doctorFlag = true end
     if a == "--config" then
         local nextArg = args[i+1]
         if nextArg and nextArg:sub(1,2) ~= "--" then
@@ -68,6 +70,18 @@ local data = conf
 
 local InstanceManager = require("managers.instance")
 InstanceManager.load(Config.get())
+
+-- One-shot: environment doctor -- run on EACH device, diff outputs to find the
+-- dependency/fingerprint difference causing "inject [OK] tapi app ga login" on one
+-- device but not the other. Exits after printing.
+if doctorFlag then
+    local Doctor = require("managers.doctor")
+    local report = Doctor.run()
+    print("\n===== DOCTOR REPORT (jalankan di KEDUA device, diff outputnya) =====")
+    print(report)
+    print("====================================================================")
+    os.exit(0)
+end
 
 -- One-shot: clear cache for all configured clones (apps must be closed first), exit.
 if clearCacheFlag then

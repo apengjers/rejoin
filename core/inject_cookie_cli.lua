@@ -1,5 +1,6 @@
 local InstanceManager = require("managers.instance")
 local CookieInjector = require("managers.cookie_injector")
+local Logger = require("core.logger")
 
 local CLI = {}
 
@@ -113,10 +114,13 @@ local ok, msg = CookieInjector.inject(inst, token)
                                 print("")
                                 print("Periksa rotasi session (baca DB saja, TANPA panggil server —")
                                 print("menghindari 2 client pakai token sama serentak yg memicu revoke):")
-                                print(CookieInjector.probeToken(inst, token))
+                                local probeText, probeVerdict = CookieInjector.probeToken(inst, token)
+                                print(probeText)
                                 print("")
-                                print("- prefix SAMA dgn token -> rotasi belum terjadi, cek app saat ini.")
-                                print("- prefix BERBEDA -> WebView sudah authenticate (login PASTI sukses).")
+                                print("[VERDICT] " .. tostring(probeVerdict))
+                                Logger.info("Probe:\n" .. tostring(probeText))
+                                Logger.info("VERDICT: " .. tostring(probeVerdict))
+                                print("")
                                 print("JANGAN verifikasi token (7>3) SELAMA app masih terbuka.")
                                 exitAfter("Inject + launch selesai.")
                             else
@@ -137,6 +141,7 @@ local ok, msg = CookieInjector.inject(inst, token)
                     print("\n----- cookies dump -----")
                     print(msg)
                     print("----- end dump -----")
+                    Logger.info("DUMP for " .. tostring(inst.package or "?") .. ":\n" .. tostring(msg))
                 else
                     print("[GAGAL] " .. tostring(msg))
                 end

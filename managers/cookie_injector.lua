@@ -282,6 +282,7 @@ function CookieInjector.inject(instance, token)
         Logger.warn("CookieInjector: verifyRemote error: " .. tostring(a))
     end
     if not okRemote then
+        Logger.warn("CookieInjector: inject batal - " .. msgRemote)
         return false, msgRemote
     end
 
@@ -324,8 +325,10 @@ function CookieInjector.inject(instance, token)
         -- 5) Remove any stale/half-written `.ROBLOSECURITY` rows first, then INSERT a
         --    single clean row (faulty old rows use host_key="roblox.com" / a non-empty
         --    top_frame_site_key and would only confuse cookie matching).
-        exec(runner .. " " .. quote(db) .. " \"DELETE FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%.roblox.com%';\"")
+        local delOut = exec(runner .. " " .. quote(db) .. " \"DELETE FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%.roblox.com%';\"")
+        if delOut and delOut ~= "" then Logger.info("CookieInjector: delete output: " .. delOut) end
         local cols, vals = buildInsertSpec(runner, db, token, nowLit)
+        Logger.info("CookieInjector: kolom yang diisi di " .. db .. " -> " .. table.concat(cols, ","))
         local sql = string.format(
             "INSERT OR REPLACE INTO cookies (%s) VALUES (%s);",
             table.concat(cols, ", "), table.concat(vals, ", ")
@@ -338,7 +341,8 @@ function CookieInjector.inject(instance, token)
         end
 
         -- 6) Fold any WAL data into the main DB.
-        exec(runner .. " " .. quote(db) .. " 'PRAGMA wal_checkpoint(TRUNCATE);'")
+        local walOut = exec(runner .. " " .. quote(db) .. " 'PRAGMA wal_checkpoint(TRUNCATE);'")
+        if walOut and walOut ~= "" then Logger.info("CookieInjector: wal_checkpoint: " .. walOut) end
 
         -- 7) Verify exactly one clean `.ROBLOSECURITY` row is stored AND that its value
         --    survived the shell-roundtrip intact (a truncated/mangled value still ends
@@ -362,6 +366,10 @@ function CookieInjector.inject(instance, token)
                 )
             else
                 written[#written + 1] = db
+                Logger.info(string.format(
+                    "CookieInjector: DB OK -> %s (len=%d, count=%d)",
+                    db, len, cnt
+                ))
             end
         end
     end
@@ -461,10 +469,11 @@ end
 -- what triggers Roblox's session-hijack detection (instant logout).
 function CookieInjector.probeToken(instance, token)
     local base = Auth.getBaseDir(instance)
-    if not base then return "(base dir tidak terbaca)" end
+    if not base then return "(base dir tidak terbaca)", "NEED_MANUAL_CHECK" end
     local lines = {}
     local dbs = locateCookieDbs(base)
     local tokPrefix = token and token:sub(1, 6) or ""
+    local seenRotated, seenSame, seenMissing = false, false, false
     if dbs and #dbs > 0 then
         local runner = resolveSqlite3(dbs[1])
         for _, db in ipairs(dbs) do
@@ -478,17 +487,21 @@ function CookieInjector.probeToken(instance, token)
                 local lenPart, pfx, cntPart = v:match("^(%d+)##(.-)##(%d+)$")
                 if lenPart and pfx and cntPart then
                     if pfx == tokPrefix then
+                        seenSame = true
                         status = "len=" .. lenPart .. ", prefix=" .. pfx .. "=token, count=" .. cntPart .. " (SAMA dgn inject -> app belum men-rotasi)"
                     else
+                        seenRotated = true
                         status = "len=" .. lenPart .. ", prefix=" .. pfx .. "!=token, count=" .. cntPart .. " (BERBEDA -> WebView SUDAH authenticate, Roblox rotasi session = app pastinya LOGIN)"
                     end
                 else
+                    seenMissing = true
                     status = "tidak ada baris / " .. tostring(v == "" and "(kosong)" or v)
                 end
             end
             lines[#lines + 1] = db .. " -> " .. status
         end
     elseif dbs then
+        seenMissing = true
         lines[#lines + 1] = "(tidak ada Cookies DB)"
     else
         lines[#lines + 1] = "(base dir tidak bisa dibaca)"
@@ -515,7 +528,33 @@ function CookieInjector.probeToken(instance, token)
             lines[#lines + 1] = "File lain berisi token: (tidak ada -> HANYA Cookies DB)"
         end
     end
-    return table.concat(lines, "\n")
+
+    -- Verdict: any rotated row wins (auth proven). Otherwise the strongest status left.
+    local verdict
+    if seenRotated then
+        verdict = "LOGIN_CONFIRMED -> WebView SUDAH authenticate; buka app, akun HARUSNYA masuk."
+    elseif seenSame then
+        verdict = "COOKIE_OK_NO_USE -> token utuh di DB & app belum rotasi; cek app / WebView (verdict memakai bandingkan dua device: --doctor)."
+    elseif seenMissing then
+        verdict = "COOKIE_CLEARED -> baris .ROBLOSECURITY hilang/absen dari DB (app menghapus cookie saat boot)."
+    else
+        verdict = "NEED_MANUAL_CHECK -> state tak terduga; tutup app lalu cek menu 7>3."
+    end
+    return table.concat(lines, "\n"), verdict
+end
+
+-- Schema/version diagnostic for one Cookies DB (used by `--doctor` to compare two devices).
+function CookieInjector.dbInfo(db)
+    local runner = resolveSqlite3(db)
+    if not runner then return "sqlite runner tidak ada" end
+    local ver = exec(runner .. " " .. quote(db) .. " 'PRAGMA user_version;'")
+    local cols = {}
+    local schemaOut = exec(string.format("%s %s \"PRAGMA table_info(cookies);\"", runner, quote(db)))
+    for l in (schemaOut or ""):gmatch("(.-)\n") do
+        local name, typ = l:match("^%d+|([^|]+)|([^|]*)")
+        if name then cols[#cols + 1] = name .. ":" .. typ end
+    end
+    return string.format("user_version=%s | cols=%d [%s]", tostring(ver or "?"), #cols, table.concat(cols, ","))
 end
 
 return CookieInjector
