@@ -53,6 +53,18 @@ local function existsFile(path)
     return out:find("AE_YES", 1, true) ~= nil
 end
 
+-- Whether the pre-inject FULL native reset (pm clear + seed launch) is enabled.
+-- Default ON: mirrors the known-good "fresh clone" condition. Override off via
+-- `wipeBeforeInject = false` in config/config.lua when the clone data must be kept.
+local function wantWipe()
+    local ok, cfg = pcall(require, "core.config")
+    if ok and cfg and cfg.get then
+        local g = cfg.get()
+        if g and g.wipeBeforeInject ~= nil then return g.wipeBeforeInject == true end
+    end
+    return true
+end
+
 -- WebKit/Chrome stores UTC timestamps as microseconds since 1601-01-01 (our era means
 -- we must add the 1970-1601 offset to a unix epoch before scaling to µs).
 local WEBKIT_EPOCH_OFFSET = 11644473600 -- seconds between 1601-01-01 and 1970-01-01
@@ -291,9 +303,32 @@ function CookieInjector.inject(instance, token)
     local base = Auth.getBaseDir(instance)
     if not base then return false, "Tidak bisa tentukan base dir instance" end
 
-    -- 1) Stop the app so the cookie DB is not held open / rewritten by WebView.
+    -- 1) FULL native reset (pm clear) + seed launch. A clone that has been logged
+    --    in/out many times can carry stale native login anchors (shared_prefs, files,
+    --    databases, device-bound session state) that make the relaunched app IGNORE a
+    --    perfectly valid injected cookie. `pm clear` returns it to fresh-install state,
+    --    then a short SEED launch recreates a pristine WebView cookie store for us to
+    --    inject into. This mirrors the known-good "fresh clone" condition.
     APK.forceStop(pkg)
     Timer.sleep(1)
+    if wantWipe() then
+        Logger.warn("CookieInjector: [RESET] pm clear " .. pkg .. " (hapus state native lama)")
+        local clearMsg = exec("pm clear " .. tostring(pkg))
+        if not clearMsg then
+            return false, "pm clear tidak menghasilkan output (root OK?) - inject dibatalkan."
+        end
+        if not clearMsg:find("Success", 1, true) then
+            Logger.warn("CookieInjector: pm clear output: " .. clearMsg)
+            return false, "pm clear gagal (" .. clearMsg:gsub("%s+", " ") .. ") - inject dibatalkan."
+        end
+        Logger.info("CookieInjector: pm clear OK -> " .. clearMsg)
+        Logger.info("CookieInjector: [SEED] launch singkat utk buat ulang cookie store WebView...")
+        APK.launch(pkg)
+        Timer.sleep(8)
+        APK.forceStop(pkg)
+        Timer.sleep(1)
+        base = Auth.getBaseDir(instance)
+    end
 
     -- 2) Enumerate EVERY Cookies DB under the base dir (a Lite/mod clone can keep its
     --    live WebView profile under a non-"Default" directory; writing only the first
@@ -303,7 +338,7 @@ function CookieInjector.inject(instance, token)
         return false, "Base dir '" .. base .. "' tidak bisa dibaca (periksa izin root)."
     end
     if #dbs == 0 then
-        return false, "Cookies DB tidak ditemukan di '" .. base .. "'. Kalau clone mod/Lite, set per-instance 'cookiePath' di config."
+        return false, "Cookies DB tidak ditemukan di '" .. base .. "'. Setelah pm clear seed launch harus bikin store - kalau kosong, seed gagal / cookiePath salah."
     end
     Logger.info("CookieInjector: target " .. #dbs .. " Cookies DB: " .. table.concat(dbs, ", "))
 
@@ -535,6 +570,21 @@ function CookieInjector.probeToken(instance, token)
         lines[#lines + 1] = "(tidak ada Cookies DB)"
     else
         lines[#lines + 1] = "(base dir tidak bisa dibaca)"
+    end
+
+    -- Live store-open check: a PRIMED WebView creates `<db>-wal` the moment its network
+    -- / cookie service actually opens the store (Chromium runs cookies in WAL). Absent
+    -- post-launch = the app never touched this cookie store -> it can't be a login issue
+    -- in the DB, it is happening before the store is even read.
+    lines[#lines + 1] = "Live store (apakah WebView app benar-benar membuka cookie store):"
+    for _, db in ipairs(dbs) do
+        local walPath = db .. "-wal"
+        local walSize = existsFile(walPath) and exec("wc -c < " .. quote(walPath) .. " 2>/dev/null") or "0"
+        walSize = tostring(walSize or "0"):gsub("%s+", "")
+        local state = existsFile(walPath)
+            and ("-wal ADA, size=" .. walSize .. " -> WebView MEMBUKA store (cookie dibaca app)")
+            or "-wal TIDAK ADA -> WebView BELUM menyentuh cookie store"
+        lines[#lines + 1] = "  " .. db .. " " .. state
     end
 
     local prefix = token and token:sub(1, 30) or ""

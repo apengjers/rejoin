@@ -77,6 +77,14 @@ return {
     -- ps/pidof/pgrep can actually see the app processes the Monitor depends on; Termux run
     -- as a normal user cannot see other apps' processes. Set false on a non-root device.
     useRoot = true,
+    -- Before injecting a cookie, FULLY reset the clone to fresh-install state
+    -- (`am force-stop` -> `pm clear` -> one short "seed" launch that recreates a
+    -- pristine WebView cookie store -> force-stop), then inject. A clone used for many
+    -- logins/attempts can accumulate stale native login anchors that make the relaunched
+    -- app IGNORE a perfectly valid injected cookie; the reset restores the same condition
+    -- as a brand-new clone (which is exactly what the known-working device has). Set
+    -- false to keep the clone's existing app data during injection.
+    wipeBeforeInject = true,
     instances = {
         -- Example instance. Private Server accepts either a public game link
         --   https://www.roblox.com/games/<placeId>/...

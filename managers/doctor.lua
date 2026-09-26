@@ -82,6 +82,26 @@ function Doctor.gather()
         "cmd package dump com.google.android.gms | grep -m1 versionName",
     }))
 
+    -- Actual WebView provider loaded by the runtime (device can differ despite the
+    -- same android.webview versionName; a mis-selected provider = different store behavior).
+    add("WEBVIEW_PROVIDER", oneOf({
+        "cmd webviewupdate get-current-webview-package 2>/dev/null",
+        "settings get global webview_provider",
+        "dumpsys webviewupdate | grep -i -m1 'current webview'",
+    }))
+
+    -- Root hiding state: if Magisk deny-list is inactive on one device, GMS Play
+    -- Integrity fails there -> Roblox may reject/revoke logins for that device only.
+    add("MAGISK", oneOf({
+        "magisk -V 2>/dev/null",
+        "/data/adb/magisk/magisk -V 2>/dev/null",
+        "ls /data/adb/magisk 2>/dev/null | head -1",
+    }))
+
+    -- Network identity seen by Roblox (IP/ASN/geo). Same token on two different
+    -- networks can authenticate on one and get flagged on the other.
+    add("NETWORK_IP", outOf("env PATH=" .. TERMUX_PREFIX .. "/bin:/system/bin LD_LIBRARY_PATH=" .. TERMUX_PREFIX .. "/lib " .. TERMUX_PREFIX .. "/bin/curl -s -m 6 https://ipinfo.io/json 2>/dev/null | head -c 220"))
+
     local instances = InstanceManager.getAll() or {}
     add("INSTANCE_COUNT", #instances)
     local CookieInjector = require("managers.cookie_injector")
