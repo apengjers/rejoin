@@ -85,15 +85,12 @@ function CLI.run()
                 print(" Token yang dipakai di >1 clone/device beruntun -> Roblox")
                 print(" force-logout SEMUA sesi (termasuk browser sumber) + rotasi.")
                 print(" Untuk tiap clone gunakan eksport token yang BEDA.")
-                print(" -------------------------------------------------------------")
-                print(" DATA CLONE AKAN DI-RESET PENUH (pm clear) + seed launch dulu,")
-                print(" lalu inject - supaya app tidak kebawa state login lama.")
                 print("=============================================================")
                 local token = readToken("Cookie .ROBLOSECURITY: ")
                 if token == "" then
                     exitAfter("[GAGAL] Token kosong, dibatalkan.")
                 else
-                    local confirm = prompt(string.format("RESET data + inject cookie (%d char) ke %s? type 'y': ", #token, tostring(inst.package or ""))) or ""
+                    local confirm = prompt(string.format("Inject cookie (%d char) ke %s? Force-stop app dulu. type 'y': ", #token, tostring(inst.package or ""))) or ""
                     if confirm:lower() == "y" then
 local ok, msg = CookieInjector.inject(inst, token)
                             if ok then

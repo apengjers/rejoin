@@ -53,18 +53,6 @@ local function existsFile(path)
     return out:find("AE_YES", 1, true) ~= nil
 end
 
--- Whether the pre-inject FULL native reset (pm clear + seed launch) is enabled.
--- Default ON: mirrors the known-good "fresh clone" condition. Override off via
--- `wipeBeforeInject = false` in config/config.lua when the clone data must be kept.
-local function wantWipe()
-    local ok, cfg = pcall(require, "core.config")
-    if ok and cfg and cfg.get then
-        local g = cfg.get()
-        if g and g.wipeBeforeInject ~= nil then return g.wipeBeforeInject == true end
-    end
-    return true
-end
-
 -- WebKit/Chrome stores UTC timestamps as microseconds since 1601-01-01 (our era means
 -- we must add the 1970-1601 offset to a unix epoch before scaling to µs).
 local WEBKIT_EPOCH_OFFSET = 11644473600 -- seconds between 1601-01-01 and 1970-01-01
@@ -303,32 +291,9 @@ function CookieInjector.inject(instance, token)
     local base = Auth.getBaseDir(instance)
     if not base then return false, "Tidak bisa tentukan base dir instance" end
 
-    -- 1) FULL native reset (pm clear) + seed launch. A clone that has been logged
-    --    in/out many times can carry stale native login anchors (shared_prefs, files,
-    --    databases, device-bound session state) that make the relaunched app IGNORE a
-    --    perfectly valid injected cookie. `pm clear` returns it to fresh-install state,
-    --    then a short SEED launch recreates a pristine WebView cookie store for us to
-    --    inject into. This mirrors the known-good "fresh clone" condition.
+    -- 1) Stop the app so the cookie DB is not held open / rewritten by WebView.
     APK.forceStop(pkg)
     Timer.sleep(1)
-    if wantWipe() then
-        Logger.warn("CookieInjector: [RESET] pm clear " .. pkg .. " (hapus state native lama)")
-        local clearMsg = exec("pm clear " .. tostring(pkg))
-        if not clearMsg then
-            return false, "pm clear tidak menghasilkan output (root OK?) - inject dibatalkan."
-        end
-        if not clearMsg:find("Success", 1, true) then
-            Logger.warn("CookieInjector: pm clear output: " .. clearMsg)
-            return false, "pm clear gagal (" .. clearMsg:gsub("%s+", " ") .. ") - inject dibatalkan."
-        end
-        Logger.info("CookieInjector: pm clear OK -> " .. clearMsg)
-        Logger.info("CookieInjector: [SEED] launch singkat utk buat ulang cookie store WebView...")
-        APK.launch(pkg)
-        Timer.sleep(8)
-        APK.forceStop(pkg)
-        Timer.sleep(1)
-        base = Auth.getBaseDir(instance)
-    end
 
     -- 2) Enumerate EVERY Cookies DB under the base dir (a Lite/mod clone can keep its
     --    live WebView profile under a non-"Default" directory; writing only the first
@@ -338,7 +303,7 @@ function CookieInjector.inject(instance, token)
         return false, "Base dir '" .. base .. "' tidak bisa dibaca (periksa izin root)."
     end
     if #dbs == 0 then
-        return false, "Cookies DB tidak ditemukan di '" .. base .. "'. Setelah pm clear seed launch harus bikin store - kalau kosong, seed gagal / cookiePath salah."
+        return false, "Cookies DB tidak ditemukan di '" .. base .. "'. Kalau clone mod/Lite, set per-instance 'cookiePath' di config."
     end
     Logger.info("CookieInjector: target " .. #dbs .. " Cookies DB: " .. table.concat(dbs, ", "))
 
