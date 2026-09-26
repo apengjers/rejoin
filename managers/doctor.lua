@@ -48,15 +48,25 @@ function Doctor.gather()
     local function add(k, v) rows[#rows + 1] = join(k, v) end
 
     add("LUA_VERSION", _VERSION)
-    add("LUA_BIN", outOf("command -v lua"))
-    add("CURL_BIN", oneOf({ "command -v curl" }))
-    add("SQLITE_BIN", oneOf({ "command -v sqlite3", "ls " .. TERMUX_PREFIX .. "/bin/sqlite3" }))
+    -- `command -v` is BROKEN under Shell.exec: toybox `timeout` execs the first word as a
+    -- real binary, but `command` is a shell builtin -> "exec command: No such file".
+    -- Use `ls <absolute path>` instead (real binary, safe under timeout).
+    add("LUA_BIN", outOf("ls " .. TERMUX_PREFIX .. "/bin/lua 2>/dev/null"))
+    add("CURL_BIN", outOf("ls " .. TERMUX_PREFIX .. "/bin/curl 2>/dev/null"))
+    add("SQLITE_BIN", outOf("ls " .. TERMUX_PREFIX .. "/bin/sqlite3 2>/dev/null"))
 
     add("ROOT_UID", outOf("id -u"))
     add("SELINUX", outOf("getenforce"))
     add("ANDROID_SDK", outOf("getprop ro.build.version.sdk"))
     add("ANDROID_RELEASE", outOf("getprop ro.build.version.release"))
     add("MODEL", oneOf({ "getprop ro.product.model", "getprop ro.product.device" }))
+    add("BUILD_FINGERPRINT", outOf("getprop ro.build.fingerprint"))
+
+    -- Device-attestation state visible to Roblox (Play Integrity / SafetyNet input).
+    add("FLASH_LOCKED", outOf("getprop ro.boot.flash.locked"))
+    add("VERIFIED_BOOTSTATE", outOf("getprop ro.boot.verifiedbootstate"))
+    add("VBMETA_DEVICE_STATE", outOf("getprop ro.boot.vbmeta.device_state"))
+    add("SECURITY_PATCH", outOf("getprop ro.build.version.security_patch"))
 
     add("WEBVIEW_GOOGLE", oneOf({
         "dumpsys package com.google.android.webview | grep -m1 versionName",

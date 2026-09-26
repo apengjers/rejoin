@@ -461,9 +461,10 @@ end
 
 -- Post-launch probe: READ-ONLY, no network. For every Cookies DB prints the injected
 -- row's `len|valuePrefix|count` and whether the stored value still equals the injected
--- token. If a DIFFERENT prefix appears, the app's WebView already authenticated and
--- Roblox rotated the session -> the app IS logged in. Also greps the instance data dir
--- (excluding our `.bak-*` backup copies) for any OTHER file holding the token.
+-- token. A DIFFERENT prefix is strong evidence the app's WebView already authenticated
+-- (Roblox rotated the session -> login). A SAME prefix is INCONCLUSIVE: a successful
+-- device may not rotate within 8s (proven on working device). Also greps the instance
+-- data dir (excluding our `.bak-*` backup copies) for any OTHER file holding the token.
 -- NOTE: never call this at the same time as a live verifyRemote against the same token
 -- while the app is running -- two clients authenticating one session in a row is exactly
 -- what triggers Roblox's session-hijack detection (instant logout).
@@ -488,10 +489,10 @@ function CookieInjector.probeToken(instance, token)
                 if lenPart and pfx and cntPart then
                     if pfx == tokPrefix then
                         seenSame = true
-                        status = "len=" .. lenPart .. ", prefix=" .. pfx .. "=token, count=" .. cntPart .. " (SAMA dgn inject -> app belum men-rotasi)"
+                        status = "len=" .. lenPart .. ", prefix=" .. pfx .. "=token, count=" .. cntPart .. " (SAMA dgn inject -> belum rotasi 8s; TIDAK KONKLUSIF - device yg berhasil bisa tanpa rotasi cepat)"
                     else
                         seenRotated = true
-                        status = "len=" .. lenPart .. ", prefix=" .. pfx .. "!=token, count=" .. cntPart .. " (BERBEDA -> WebView SUDAH authenticate, Roblox rotasi session = app pastinya LOGIN)"
+                        status = "len=" .. lenPart .. ", prefix=" .. pfx .. "!=token, count=" .. cntPart .. " (BERBEDA -> WebView SUDAH authenticate, Roblox rotasi = app LOGIN terkonfirmasi)"
                     end
                 else
                     seenMissing = true
@@ -514,7 +515,7 @@ function CookieInjector.probeToken(instance, token)
         if g then
             for line in (g .. "\n"):gmatch("(.-)\n") do
                 line = line:gsub("%s+$", "")
-                if line ~= "" and not line:find("%.bak%-", 1, true) then
+                if line ~= "" and not line:find(".bak-", 1, true) then
                     others[#others + 1] = line
                 end
             end
@@ -532,9 +533,9 @@ function CookieInjector.probeToken(instance, token)
     -- Verdict: any rotated row wins (auth proven). Otherwise the strongest status left.
     local verdict
     if seenRotated then
-        verdict = "LOGIN_CONFIRMED -> WebView SUDAH authenticate; buka app, akun HARUSNYA masuk."
+        verdict = "LOGIN_CONFIRMED -> rotasi terdeteksi = WebView SUDAH authenticate; akun HARUSNYA sudah masuk."
     elseif seenSame then
-        verdict = "COOKIE_OK_NO_USE -> token utuh di DB & app belum rotasi; cek app / WebView (verdict memakai bandingkan dua device: --doctor)."
+        verdict = "COOKIE_OK_NO_USE -> row utuh & belum rotasi 8s (TIDAK KONKLUSIF; device yg berhasil bisa login tanpa rotasi cepat). Cek: buka app & lihat avatar/username."
     elseif seenMissing then
         verdict = "COOKIE_CLEARED -> baris .ROBLOSECURITY hilang/absen dari DB (app menghapus cookie saat boot)."
     else
