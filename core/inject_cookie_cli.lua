@@ -10,27 +10,15 @@ local function prompt(msg)
     return io.read()
 end
 
--- Disable terminal echo while reading a long token. Echoing a long paste can stall
--- Termux rendering and consume the next prompt's input.
+-- Disable terminal echo while reading a long token. Use inherited stdin: some
+-- cloud terminals have no usable /dev/tty even though stdin is a TTY.
 local function readToken(msg)
     io.write(msg)
     io.flush()
-    local saved
-    local state = io.popen("stty -g </dev/tty 2>/dev/null")
-    if state then
-        saved = state:read("*l")
-        state:close()
-    end
-    if saved and saved:match("^[%x:]+$") then
-        os.execute("stty -echo </dev/tty 2>/dev/null")
-    else
-        saved = nil
-    end
+    os.execute("stty -echo 2>/dev/null")
     local readOk, t = pcall(io.read, "*l")
-    if saved then os.execute("stty " .. saved .. " </dev/tty 2>/dev/null") end
-    -- Some Termux sessions lose echo or ONLCR after a long paste. Restore the
-    -- interactive modes explicitly before any menu or diagnostic output.
-    os.execute("stty echo icanon opost onlcr </dev/tty 2>/dev/null")
+    os.execute("stty sane 2>/dev/null")
+    os.execute("stty echo icanon opost onlcr 2>/dev/null")
     io.write("\r\n")
     io.flush()
     if not readOk then return "" end
@@ -76,12 +64,15 @@ local function backToMain()
     io.read()
 end
 
--- A new Lua process gets a clean terminal input state after the long paste.
--- run.sh treats exit 75 as a request to redraw and restart the main menu.
+-- Reset the terminal before returning to the menu. run.sh can also restart the
+-- process; direct `lua main.lua` must remain interactive without that wrapper.
 local function finish(msg)
+    os.execute("stty sane 2>/dev/null")
+    os.execute("stty echo icanon opost onlcr 2>/dev/null")
+    io.write("\r\27[2J\27[H")
     print(tostring(msg))
     io.flush()
-    os.exit(75)
+    if os.getenv("REJOIN_WRAPPER") == "1" then os.exit(75) end
 end
 
 function CLI.run()
