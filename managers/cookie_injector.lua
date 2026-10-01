@@ -541,7 +541,7 @@ function CookieInjector.probeToken(instance, token)
     -- post-launch = the app never touched this cookie store -> it can't be a login issue
     -- in the DB, it is happening before the store is even read.
     lines[#lines + 1] = "Live store (apakah WebView app benar-benar membuka cookie store):"
-    for _, db in ipairs(dbs) do
+    for _, db in ipairs(dbs or {}) do
         local walPath = db .. "-wal"
         local walSize = existsFile(walPath) and exec("wc -c < " .. quote(walPath) .. " 2>/dev/null") or "0"
         walSize = tostring(walSize or "0"):gsub("%s+", "")

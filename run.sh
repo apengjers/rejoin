@@ -15,26 +15,39 @@
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 cd "$SCRIPT_DIR" || exit 1
 TTY_STATE=
-if [ -t 0 ]; then
-    TTY_STATE=$(stty -g </dev/tty 2>/dev/null) || TTY_STATE=
-    # POSIX shells may give background jobs /dev/null as stdin. Keep menu input on TTY.
-    lua main.lua "$@" </dev/tty &
-else
-    lua main.lua "$@" &
-fi
-PID=$!
+if [ -t 0 ]; then TTY_STATE=$(stty -g </dev/tty 2>/dev/null) || TTY_STATE=; fi
+PID=
 restore_tty() {
-    if [ -n "$TTY_STATE" ]; then stty "$TTY_STATE" </dev/tty 2>/dev/null; fi
+    if [ -n "$TTY_STATE" ]; then
+        stty "$TTY_STATE" </dev/tty 2>/dev/null || stty sane </dev/tty 2>/dev/null
+    elif [ -t 0 ]; then
+        stty sane </dev/tty 2>/dev/null
+    fi
+    if [ -t 0 ]; then stty echo icanon opost onlcr </dev/tty 2>/dev/null; fi
 }
 stop_child() {
-    kill -TERM "$PID" 2>/dev/null
-    wait "$PID" 2>/dev/null
+    if [ -n "$PID" ]; then
+        kill -TERM "$PID" 2>/dev/null
+        wait "$PID" 2>/dev/null
+    fi
     restore_tty
     exit "$1"
 }
 trap 'stop_child 130' INT
 trap 'stop_child 143' TERM
-wait "$PID"
-STATUS=$?
-restore_tty
-exit "$STATUS"
+while :; do
+    if [ -t 0 ]; then
+        # POSIX shells may give background jobs /dev/null as stdin.
+        lua main.lua "$@" </dev/tty &
+    else
+        lua main.lua "$@" &
+    fi
+    PID=$!
+    wait "$PID"
+    STATUS=$?
+    PID=
+    restore_tty
+    if [ "$STATUS" -ne 75 ]; then exit "$STATUS"; fi
+    # Cookie input used a long paste. Redraw a fresh menu in a new Lua process.
+    if [ -t 0 ]; then printf '\033[2J\033[H' >/dev/tty; fi
+done
