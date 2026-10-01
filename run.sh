@@ -14,16 +14,21 @@
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 cd "$SCRIPT_DIR" || exit 1
+exec 3<&0
 TTY_STATE=
-if [ -t 0 ]; then TTY_STATE=$(stty -g </dev/tty 2>/dev/null) || TTY_STATE=; fi
+if [ -t 3 ]; then
+    stty sane <&3 2>/dev/null
+    stty echo icanon opost onlcr <&3 2>/dev/null
+    TTY_STATE=$(stty -g <&3 2>/dev/null) || TTY_STATE=
+fi
 PID=
 restore_tty() {
     if [ -n "$TTY_STATE" ]; then
-        stty "$TTY_STATE" </dev/tty 2>/dev/null || stty sane </dev/tty 2>/dev/null
-    elif [ -t 0 ]; then
-        stty sane </dev/tty 2>/dev/null
+        stty "$TTY_STATE" <&3 2>/dev/null || stty sane <&3 2>/dev/null
+    elif [ -t 3 ]; then
+        stty sane <&3 2>/dev/null
     fi
-    if [ -t 0 ]; then stty echo icanon opost onlcr </dev/tty 2>/dev/null; fi
+    if [ -t 3 ]; then stty echo icanon opost onlcr <&3 2>/dev/null; fi
 }
 stop_child() {
     if [ -n "$PID" ]; then
@@ -36,12 +41,9 @@ stop_child() {
 trap 'stop_child 130' INT
 trap 'stop_child 143' TERM
 while :; do
-    if [ -t 0 ]; then
-        # POSIX shells may give background jobs /dev/null as stdin.
-        lua main.lua "$@" </dev/tty &
-    else
-        lua main.lua "$@" &
-    fi
+    # Explicit stdin redirection prevents POSIX sh from assigning /dev/null to
+    # background Lua. fd 3 retains original terminal even without /dev/tty.
+    REJOIN_WRAPPER=1 lua main.lua "$@" <&3 &
     PID=$!
     wait "$PID"
     STATUS=$?
@@ -49,5 +51,5 @@ while :; do
     restore_tty
     if [ "$STATUS" -ne 75 ]; then exit "$STATUS"; fi
     # Cookie input used a long paste. Redraw a fresh menu in a new Lua process.
-    if [ -t 0 ]; then printf '\033[2J\033[H' >/dev/tty; fi
+    if [ -t 3 ]; then printf '\033[2J\033[H'; fi
 done

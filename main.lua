@@ -1,3 +1,12 @@
+-- Recover terminal mode left by a previous interrupted cookie paste before any
+-- logs or menu text. A redirected/headless stdin makes stty fail harmlessly.
+local ttyReady = os.execute("stty sane 2>/dev/null")
+if ttyReady == true or ttyReady == 0 then
+    os.execute("stty echo icanon opost onlcr 2>/dev/null")
+    io.write("\r\27[2J\27[H")
+    io.flush()
+end
+
 local Logger = require("core.logger")
 local State = require("core.state")
 
