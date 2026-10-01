@@ -26,10 +26,15 @@ local function readToken(msg)
     else
         saved = nil
     end
-    local t = io.read("*l") or ""
+    local readOk, t = pcall(io.read, "*l")
     if saved then os.execute("stty " .. saved .. " </dev/tty 2>/dev/null") end
-    io.write("\n")
+    -- Some Termux sessions lose echo or ONLCR after a long paste. Restore the
+    -- interactive modes explicitly before any menu or diagnostic output.
+    os.execute("stty echo icanon opost onlcr </dev/tty 2>/dev/null")
+    io.write("\r\n")
     io.flush()
+    if not readOk then return "" end
+    t = t or ""
     return t:gsub("^%s+", ""):gsub("%s+$", "")
 end
 
@@ -71,10 +76,12 @@ local function backToMain()
     io.read()
 end
 
--- Return to the main menu after token actions. Token input is not echoed, so a
--- long paste does not flood the terminal and block the following prompt.
+-- A new Lua process gets a clean terminal input state after the long paste.
+-- run.sh treats exit 75 as a request to redraw and restart the main menu.
 local function finish(msg)
     print(tostring(msg))
+    io.flush()
+    os.exit(75)
 end
 
 function CLI.run()
@@ -99,7 +106,8 @@ function CLI.run()
                 else
                     local confirm = prompt(string.format("Inject cookie (%d char) ke %s? Force-stop app dulu. type 'y': ", #token, tostring(inst.package or ""))) or ""
                     if confirm:lower() == "y" then
-local ok, msg = CookieInjector.inject(inst, token)
+                            local called, ok, msg = pcall(CookieInjector.inject, inst, token)
+                            if not called then finish("[GAGAL] Inject error. Cek log dan coba lagi.") end
                             if ok then
                                 print("[OK] " .. tostring(msg))
                                 -- The app was force-stopped by inject; launch it right away so
@@ -121,7 +129,11 @@ local ok, msg = CookieInjector.inject(inst, token)
                                 print("")
                                 print("Periksa rotasi session (baca DB saja, TANPA panggil server —")
                                 print("menghindari 2 client pakai token sama serentak yg memicu revoke):")
-                                local probeText, probeVerdict = CookieInjector.probeToken(inst, token)
+                                local probeOk, probeText, probeVerdict = pcall(CookieInjector.probeToken, inst, token)
+                                if not probeOk then
+                                    probeText = "Probe gagal; periksa Cookies DB setelah app ditutup."
+                                    probeVerdict = "NEED_MANUAL_CHECK"
+                                end
                                 print(probeText)
                                 print("")
                                 print("[VERDICT] " .. tostring(probeVerdict))
@@ -166,7 +178,8 @@ local ok, msg = CookieInjector.inject(inst, token)
                 finish("[GAGAL] Token kosong, dibatalkan.")
                 return
             else
-                local ok, msg = CookieInjector.verifyRemote(token)
+                local called, ok, msg = pcall(CookieInjector.verifyRemote, token)
+                if not called then finish("[GAGAL] Verifikasi error. Cek koneksi lalu coba lagi.") end
                 finish(ok and ("[VALID] " .. tostring(msg)) or ("[GAGAL] " .. tostring(msg)))
                 return
             end
