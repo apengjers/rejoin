@@ -33,13 +33,13 @@ else
 fi
 
 # lua-posix (OPTIONAL): enables an in-process SIGINT handler. The recommended way to
-# stop the monitor is the run.sh wrapper (catches Ctrl+C in the shell and kills the
-# Lua process), which works without lua-posix. Only available for Lua PUC-Rio, NOT luajit.
+# stop the monitor is `lua main.lua`, which starts the run.sh supervisor internally.
+# This works without lua-posix. Only available for Lua PUC-Rio, NOT luajit.
 if command -v lua >/dev/null 2>&1 && ! (lua -v 2>&1 | grep -qi "luajit"); then
   echo "Installing lua-posix (optional, improves Ctrl+C)..."
-  pkg install -y lua-posix || echo "Warning: lua-posix install failed; use `sh run.sh` for reliable Ctrl+C."
+  pkg install -y lua-posix || echo "Warning: lua-posix install failed; use lua main.lua for reliable Ctrl+C."
 else
-  echo "Warning: lua-posix is not available for luajit. Use `sh run.sh` for reliable Ctrl+C."
+  echo "Warning: lua-posix is not available for luajit. Use lua main.lua for reliable Ctrl+C."
 fi
 
 # Optional: luarocks and cjson
@@ -86,20 +86,19 @@ Setup complete.
 Next steps (on device):
   cd $HOME/rejoin
   # Run interactive mode (wizard will run if config is new):
-  sh run.sh
+  lua main.lua
 
   # Or run a dry-run monitor simulation (no shell side effects):
-  sh run.sh --dry-run --headless --start-monitor
+  lua main.lua --dry-run --headless --start-monitor
 
   # Or run headless monitor for real (be careful - will execute am/pidof commands):
-  sh run.sh --headless --start-monitor
+  lua main.lua --headless --start-monitor
 
 AutoExecute scripts are managed directly in /sdcard/Delta/Autoexecute from the
 "6) AutoExecute Manager" menu (Add/Edit/Delete write straight into that folder).
 
-For Ctrl+C to stop the monitor, run via run.sh (a shell wrapper that catches
-Ctrl+C and kills the Lua process). lua-posix is optional: the in-process SIGINT
-handler only works when lua-posix is available.
+lua main.lua starts its terminal supervisor automatically, so Ctrl+C stops the
+monitor. lua-posix is optional for the in-process SIGINT handler.
 
 If any commands fail, inspect the log at data/rejoin.log and share it for troubleshooting.
 

@@ -1,3 +1,24 @@
+-- Keep `lua main.lua` as the single entrypoint. The shell supervisor owns the
+-- terminal while Lua runs, so Ctrl+C works even during os.execute/io.popen.
+-- REJOIN_WRAPPER prevents the supervisor's child from launching another one.
+if os.getenv("REJOIN_WRAPPER") ~= "1" then
+    local function shellQuote(value)
+        return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
+    end
+    local scriptDir = (arg and arg[0] and arg[0]:match("^(.*[/\\])")) or ""
+    local command = "sh " .. shellQuote(scriptDir .. "run.sh")
+    for i = 1, #(arg or {}) do
+        command = command .. " " .. shellQuote(arg[i])
+    end
+    local ok, _, code = os.execute(command)
+    if type(ok) == "number" then
+        -- Lua 5.1 returns the wait status as a number; newer Lua returns a
+        -- boolean plus the exit code.
+        os.exit(ok > 255 and math.floor(ok / 256) or ok)
+    end
+    os.exit(ok and 0 or (code or 1))
+end
+
 -- Recover terminal mode left by a previous interrupted cookie paste before any
 -- logs or menu text. A redirected/headless stdin makes stty fail harmlessly.
 local ttyReady = os.execute("stty sane 2>/dev/null")

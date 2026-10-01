@@ -14,4 +14,5 @@
 # keep monitoring until the process is stopped.
 
 REJOIN_DIR=${REJOIN_DIR:-"$HOME/rejoin"}
-exec sh "$REJOIN_DIR/run.sh" --headless --start-monitor --auto-launch
+cd "$REJOIN_DIR" || exit 1
+exec lua main.lua --headless --start-monitor --auto-launch

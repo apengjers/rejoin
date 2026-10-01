@@ -38,10 +38,10 @@ Rejoin Engine adalah tools otomatisasi berbasis **Lua** yang berjalan di **Termu
 
 ### Agar Ctrl+C bisa menghentikan program
 
-Monitor nyaris sepanjang waktu berada di dalam `os.execute`/`io.popen` (memanggil `ps`, `pidof`, dsb.), dan POSIX **memblokir SIGINT** saat proses ada di dalam `system()`/`popen()` — jadi `lua main.lua` langsung sering menelan Ctrl+C. Solusinya jalankan lewat **`run.sh`**: shell wrapper itu menangkap Ctrl+C sendiri lalu `kill` child Lua, sehingga berhenti andal dalam satu terminal (tanpa install `lua-posix`, yang tidak tersedia di repo Termux).
+Jalankan `lua main.lua` seperti biasa. Entry point ini otomatis mengaktifkan pengawas terminal internal (`run.sh`) yang menangani Ctrl+C saat monitor berada di dalam `os.execute`/`io.popen`, serta memulihkan input dan tampilan menu setelah inject cookie.
 
 ```sh
-sh run.sh            # atau chmod +x run.sh && ./run.sh ...
+lua main.lua
 ```
 
 `lua-posix` (opsional, bila tersedia di device lain) tetap dipakai otomatis oleh `managers/monitor.lua` untuk menghentikan program dari dalam proses.
@@ -58,9 +58,9 @@ sh run.sh            # atau chmod +x run.sh && ./run.sh ...
    chmod +x setup.sh && ./setup.sh
    ```
 
-3. Jalankan tools (pakai `run.sh` supaya Ctrl+C bisa berhenti):
+3. Jalankan tools:
    ```sh
-   sh run.sh
+   lua main.lua
    ```
    - Jika `config/config.lua` belum ada, **Setup Wizard** akan berjalan untuk mendeteksi/menambah instance.
 
@@ -70,19 +70,19 @@ sh run.sh            # atau chmod +x run.sh && ./run.sh ...
 
 - Mulai monitor langsung (tanpa menu):
   ```sh
-  sh run.sh --headless --start-monitor
+  lua main.lua --headless --start-monitor
   ```
 - Lewati wizard saat config belum ada:
   ```sh
-  sh run.sh --no-wizard
+  lua main.lua --no-wizard
   ```
 - Simulasi tanpa efek samping shell (dry-run):
   ```sh
-  sh run.sh --dry-run --headless --start-monitor
+  lua main.lua --dry-run --headless --start-monitor
   ```
 - Sama seperti Menu 1 (launch semua clone + optimizer, lalu monitor) secara non-interaktif:
   ```sh
-  sh run.sh --headless --start-monitor --auto-launch
+  lua main.lua --headless --start-monitor --auto-launch
   ```
 
 ### Auto-start saat boot (Termux:Boot)
@@ -97,7 +97,7 @@ Biar Termux otomatis terbuka & langsung jalan ke Menu 1 setiap HP dinyalakan:
    chmod +x ~/.termux/boot/start-rejoin.sh
    ```
 3. **Buka aplikasi Termux:Boot sekali** (agar boot receiver terdaftar), lalu reboot HP.
-4. Setiap boot, Termux menjalankan `sh ~/rejoin/run.sh --headless --start-monitor --auto-launch` (setara pilih menu `1`). Jika repo ada di lokasi lain, set `REJOIN_DIR` di script boot.
+4. Setiap boot, Termux menjalankan `lua main.lua --headless --start-monitor --auto-launch` dari folder repo (setara pilih menu `1`). Jika repo ada di lokasi lain, set `REJOIN_DIR` di script boot.
 
 ### Matikan auto-boot
 
@@ -107,7 +107,7 @@ Gemana cara mematikannya? Tarik script dari folder boot agar Termux:Boot tidak m
 rm ~/.termux/boot/start-rejoin.sh
 ```
 
-Setelah dihapus, Termux tidak akan otomatis membuka & menjalankan engine lagi di boot berikutnya. (Fungsi Manual via `sh run.sh` tetap jalan seperti biasa; boot yang sudah berjalan tetap bisa dihentikan manual.)
+Setelah dihapus, Termux tidak akan otomatis membuka & menjalankan engine lagi di boot berikutnya. (Fungsi manual via `lua main.lua` tetap jalan seperti biasa; boot yang sudah berjalan tetap bisa dihentikan manual.)
 
 ---
 
