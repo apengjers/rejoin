@@ -3,6 +3,10 @@ local Shell = require("utils.shell")
 
 local Android = {}
 
+local function quote(value)
+    return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
+end
+
 function Android.forceStop(packageName)
     Logger.info("Android: force stopping " .. tostring(packageName))
     Shell.exec(string.format("am force-stop %s", packageName))
@@ -32,11 +36,6 @@ function Android.launch(packageName)
         Logger.info("Android: monkey launch injected events for " .. tostring(packageName))
         return true
     end
-    if ok and out and out:find("Error", 1, true) == nil then
-        Logger.info("Android: monkey launch accepted for " .. tostring(packageName))
-        return true
-    end
-
     cmd = string.format("cmd package resolve-activity --brief %s", packageName)
     local rok, rout = Shell.exec(cmd)
     local component = nil
@@ -60,28 +59,32 @@ end
 -- form only reaches a single default handler and -n <pkg>/...ActivityProtocolLaunch
 -- only showed the game page.
 --
--- Strategies, tried in order (each logs its result so the active one is visible):
---   1) am start -a VIEW -d '<url>' -p <pkg>   (targeted clone, auto-join + per-account)
---   2) am start -a VIEW -d '<url>'            (untargeted fallback)
+-- A failed targeted launch must not open the default clone/account.
 function Android.openURL(url, packageName)
     Logger.info("Android: opening URL " .. tostring(url) .. " (pkg=" .. tostring(packageName) .. ")")
 
-    local function accepted(out)
-        return out ~= nil and out:find("Error", 1, true) == nil
+    local function accepted(ok, out)
+        if not ok or not out then return false end
+        for _, hint in ipairs({ "Error", "Failure", "Exception", "Activity not started" }) do
+            if out:find(hint, 1, true) then return false end
+        end
+        return true
     end
 
     -- 1) Targeted clone package.
     if packageName and packageName ~= "" then
-        local ok, out = Shell.exec(string.format("am start -a android.intent.action.VIEW -d '%s' -p %s", url, packageName))
-        if ok and accepted(out) then
+        local ok, out = Shell.exec(string.format("am start -a android.intent.action.VIEW -d %s -p %s", quote(url), quote(packageName)))
+        if accepted(ok, out) then
             Logger.info("Android: openURL via targeted package (" .. tostring(packageName) .. ")")
             return true, out
         end
-        Logger.warn("Android: targeted openURL failed for " .. tostring(packageName) .. ", retrying without target: " .. tostring(out))
+        Logger.warn("Android: targeted openURL failed for " .. tostring(packageName) .. ": " .. tostring(out))
+        return false, out
     end
 
     -- 2) Untargeted.
-    return Shell.exec(string.format("am start -a android.intent.action.VIEW -d '%s'", url))
+    local ok, out = Shell.exec(string.format("am start -a android.intent.action.VIEW -d %s", quote(url)))
+    return accepted(ok, out), out
 end
 
 return Android

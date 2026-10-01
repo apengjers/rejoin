@@ -63,10 +63,6 @@ function APKManager.launch(packageName)
             Logger.info("APKManager: monkey launch injected events for " .. tostring(packageName))
             return true, out
         end
-        if out:find("Error", 1, true) == nil then
-            Logger.info("APKManager: monkey launch accepted for " .. tostring(packageName))
-            return true, out
-        end
         Logger.warn("APKManager: monkey reported an error for " .. tostring(packageName) .. ": " .. tostring(out))
     else
         Logger.warn("APKManager: monkey launch failed/empty for " .. tostring(packageName))

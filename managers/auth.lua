@@ -57,11 +57,16 @@ end
 local function countToken(base)
     -- `grep -a -r -l` prints the file paths that contain the token; `-l` means we only
     -- get file names (one per line) so the count is the number of files with the token.
-    local cmd = string.format("grep -a -r -l '.ROBLOSECURITY' '%s' 2>/dev/null", base)
+    local quoted = "'" .. base:gsub("'", "'\\''") .. "'"
+    local cmd = string.format("grep -a -r -l '.ROBLOSECURITY' %s 2>/dev/null", quoted)
     -- Shell.exec returns (ok, output); pcall returns (true, ok, output) so capture the
     -- THIRD value (the actual output string), not the second (Shell's ok boolean).
-    local ok, _, out = pcall(function() return Shell.exec(cmd) end)
-    if not ok or not out or out == "(dry-run)" then return nil end
+    local called, succeeded, out, code = pcall(function() return Shell.exec(cmd) end)
+    if not called or not out or out == "(dry-run)" then return nil end
+    if not succeeded then
+        if code == 1 then return "" end -- grep found no match
+        return nil -- unreadable directory or other grep failure
+    end
     -- Empty output = no matches found (dir exists and was scanned OK). We cannot tell a
     -- truly empty result from "grep failed" via output alone, so first verify the base
     -- dir is readable; if it is, empty means "no session".
@@ -69,10 +74,11 @@ local function countToken(base)
 end
 
 local function baseDirExists(base)
-    local cmd = string.format("[ -d '%s' ] && echo AE_DIR || echo AE_NODIR", base)
+    local quoted = "'" .. base:gsub("'", "'\\''") .. "'"
+    local cmd = string.format("[ -d %s ] && echo AE_DIR || echo AE_NODIR", quoted)
     -- See countToken: capture the THIRD pcall value (the output string).
-    local ok, _, out = pcall(function() return Shell.exec(cmd) end)
-    if not ok or not out or out == "(dry-run)" then return nil end
+    local called, succeeded, out = pcall(function() return Shell.exec(cmd) end)
+    if not called or not succeeded or not out or out == "(dry-run)" then return nil end
     if out:find("AE_DIR", 1, true) then return true end
     if out:find("AE_NODIR", 1, true) then return false end
     return nil
