@@ -46,7 +46,8 @@ return {
     },
 
     -- Clear each clone's cache right after a cold start / relaunch (after force-stop,
-    -- before launch) so it boots fresh: less storage/RAM bloat. Wipes the cache dirs
+    -- before launch) so it boots with less cached storage. This does not directly
+    -- reduce RAM used by a clone that is still running. Wipes the cache dirs
     -- the same way Settings' "Clear cache" button does (manual rm -rf of cache,
     -- code_cache + external cache). clearWebView additionally wipes the WebView cache
     -- dirs (HTTP/service-worker/V8/GPU caches - the heaviest clutter on Roblox clones).
