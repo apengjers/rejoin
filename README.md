@@ -97,7 +97,7 @@ Biar Termux otomatis terbuka & langsung jalan ke Menu 1 setiap HP dinyalakan:
    chmod +x ~/.termux/boot/start-rejoin.sh
    ```
 3. **Buka aplikasi Termux:Boot sekali** (agar boot receiver terdaftar), lalu reboot HP.
-4. Setiap boot, Termux terbuka otomatis dan menjalankan `lua main.lua --headless --start-monitor --auto-launch` (setara pilih menu `1`).
+4. Setiap boot, Termux menjalankan `sh ~/rejoin/run.sh --headless --start-monitor --auto-launch` (setara pilih menu `1`). Jika repo ada di lokasi lain, set `REJOIN_DIR` di script boot.
 
 ### Matikan auto-boot
 

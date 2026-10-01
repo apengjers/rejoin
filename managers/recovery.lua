@@ -29,7 +29,7 @@ end
 -- link, self-contained so it never depends on utils/roblox_link syncing to the device.
 -- Private-server /share links must stay untouched (no placeId).
 local function isShareLink(url)
-    return url ~= nil and url:find("roblox%.com/share", 1, true) ~= nil
+    return url ~= nil and url:lower():find("roblox.com/share", 1, true) ~= nil
 end
 
 -- Extract a place id tolerantly from many Roblox link shapes:
@@ -50,8 +50,7 @@ local function extractPlaceIdLenient(url)
     return nil
 end
 
--- Open the instance game/private-server link.
--- Best-effort: logs and does not fail the caller on a bad/missing link.
+-- Open the instance game/private-server link. Propagate launch failures to callers.
 local function openGameLink(instance)
     local pkg = instance and instance.package
     if not instance.privateServer then
@@ -74,8 +73,7 @@ local function openGameLink(instance)
     end
 
     Logger.info("Recovery: opening game link for " .. tostring(instance.name or pkg) .. ": " .. tostring(link))
-    UtilsAndroid.openURL(link, pkg)
-    return true
+    return UtilsAndroid.openURL(link, pkg)
 end
 
 -- Launch an instance's app and join its game (best-effort), no retry loop.
@@ -97,11 +95,13 @@ function Recovery.launchAndJoin(instance)
         -- first, then the deep link launches it and joins the map. If the clone is still warm
         -- the deep link just shows the game page. Launching via the launcher activity first
         -- (APK.launch: MAIN/LAUNCHER) also left the app on its home screen, so we skip that too.
-        APK.forceStop(pkg)
+        local stopped = APK.forceStop(pkg)
+        if not stopped then return false end
         Timer.sleep(1)
         -- Cold start: clone is fully stopped, safe to drop its caches before booting.
         pcall(function() return CacheCleaner.applyForInstance(instance) end)
-        openGameLink(instance)
+        local opened = openGameLink(instance)
+        if not opened then return false end
     else
         local ok, err = APK.launch(pkg)
         if not ok then
@@ -203,7 +203,8 @@ function Recovery.relaunch(instance)
 
     local ok_fs = APK.forceStop(pkg)
     if not ok_fs then
-        Logger.debug("Recovery.relaunch: forceStop returned false for " .. tostring(pkg))
+        Logger.warn("Recovery.relaunch: forceStop failed for " .. tostring(pkg))
+        return false
     end
 
     Timer.sleep(1)
@@ -250,7 +251,8 @@ function Recovery.checkAndRecover(instance)
         -- Force stop first
         local ok_fs = APK.forceStop(pkg)
         if not ok_fs then
-            Logger.debug("Recovery: forceStop returned false/err for " .. tostring(pkg))
+            Logger.warn("Recovery: forceStop failed for " .. tostring(pkg))
+            return false
         end
 
         -- small pause to let system settle
@@ -259,8 +261,14 @@ function Recovery.checkAndRecover(instance)
         -- Clone is stopped: drop its caches before relaunching (fresh boot each time).
         pcall(function() return CacheCleaner.applyForInstance(instance) end)
 
-        -- Launch app
-        local ok_launch, launchOut = APK.launch(pkg)
+        -- A game link must launch a cold app. Launching MAIN first can leave the
+        -- subsequent VIEW intent on the game page without joining the server.
+        local ok_launch, launchOut
+        if instance.privateServer and instance.privateServer ~= "" then
+            ok_launch, launchOut = openGameLink(instance)
+        else
+            ok_launch, launchOut = APK.launch(pkg)
+        end
         if not ok_launch then
             Logger.warn(string.format("Recovery: launch failed for %s (attempt %d): %s", tostring(pkg), attempt, tostring(launchOut)))
             -- retry after delay
@@ -286,9 +294,6 @@ function Recovery.checkAndRecover(instance)
 
         if healthy then
             Logger.info("Recovery: instance appears healthy: " .. tostring(instance.name or pkg))
-
-            -- Open game / private server URL if present (normalize to a safe form first)
-            openGameLink(instance)
 
             Logger.info("Recovery: completed successfully for " .. tostring(instance.name or pkg))
             return true

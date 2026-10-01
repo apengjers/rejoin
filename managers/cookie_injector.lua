@@ -42,8 +42,8 @@ end
 -- Run a shell command (root, timeouts applied) and return its trimmed output, or nil
 -- if the exec itself failed.
 local function exec(cmd)
-    local ok, _, out = pcall(function() return Shell.exec(cmd) end)
-    if not ok or not out then return nil end
+    local called, succeeded, out = pcall(function() return Shell.exec(cmd) end)
+    if not called or not succeeded or not out then return nil end
     return out:gsub("\n+$", "")
 end
 
@@ -225,8 +225,7 @@ local function buildInsertSpec(runner, db, token, nowLit)
 end
 
 -- Verify a token is still accepted by Roblox before we write anything to the app.
--- Returns (ok, message); ok == true also when curl is unavailable (verify skipped,
--- so an offline device can still inject).
+-- Returns (ok, message). A missing curl or failed network request rejects injection.
 function CookieInjector.verifyRemote(token)
     if not validToken(token) then return false, "Token tidak valid format" end
     local curlBin = resolveCurl()
@@ -274,12 +273,12 @@ function CookieInjector.inject(instance, token)
     -- 0) Fail fast when the session is already dead server-side (the silent-login-fail
     --    trap from before), BEFORE force-stopping the app or touching any data. Wrapped
     --    in pcall so any unexpected verify crash can never take down the whole CLI.
-    local okRemote, msgRemote = true, "verifikasi remote dilewati (error internal)"
+    local okRemote, msgRemote = false, "verifikasi remote gagal (error internal)"
     local okP, a, b = pcall(CookieInjector.verifyRemote, token)
     if okP then
         okRemote, msgRemote = a, b
     else
-        Logger.warn("CookieInjector: verifyRemote error: " .. tostring(a))
+        Logger.warn("CookieInjector: verifyRemote error")
     end
     if not okRemote then
         Logger.warn("CookieInjector: inject batal - " .. msgRemote)
@@ -317,36 +316,34 @@ function CookieInjector.inject(instance, token)
     local nowLit = webkitNow()
     local written, failures = {}, {}
     for _, db in ipairs(dbs) do
-        -- 4) Backup first (restore point if the token needs to be removed later).
+        do
+        -- 4) SQLite backup includes committed WAL transactions. Copying only the main
+        -- DB or deleting sidecars can lose cookies that have not been checkpointed.
         local backup = db .. ".bak-" .. stamp
-        exec("cp -a " .. quote(db) .. " " .. quote(backup))
+        local backupOut = exec(runner .. " " .. quote(db) .. " " .. quote(".backup " .. quote(backup)))
+        if not backupOut or not existsFile(backup) then
+            failures[#failures + 1] = db .. " - backup gagal; DB tidak diubah"
+            Logger.warn("CookieInjector: backup gagal untuk " .. db)
+            goto continue_db
+        end
         Logger.info("CookieInjector: backup -> " .. backup)
 
-        -- 4b) Drop stale WebView transaction files left behind by a force-stopped app.
-        -- Chromium re-opens its cookie store in WAL mode and would replay these on
-        -- relaunch, shadowing the row we are about to write. Safe to remove while the
-        -- app is dead; they are recreated on next open.
-        for _, suffix in ipairs({ "-wal", "-shm", "-journal" }) do
-            local side = db .. suffix
-            local existed = existsFile(side)
-            exec("rm -f " .. quote(side))
-            Logger.info("CookieInjector: " .. (existed and "hapus stale " or "tidak ada ") .. side)
-        end
-
-        -- 5) Remove any stale/half-written `.ROBLOSECURITY` rows first, then INSERT a
-        --    single clean row (faulty old rows use host_key="roblox.com" / a non-empty
-        --    top_frame_site_key and would only confuse cookie matching).
-        local delOut = exec(runner .. " " .. quote(db) .. " \"DELETE FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%.roblox.com%';\"")
-        if delOut and delOut ~= "" then Logger.info("CookieInjector: delete output: " .. delOut) end
+        -- 5) Delete and insert in one transaction. On insert failure SQLite rolls back
+        -- the delete, preserving the existing session cookie.
         local cols, vals = buildInsertSpec(runner, db, token, nowLit)
         Logger.info("CookieInjector: kolom yang diisi di " .. db .. " -> " .. table.concat(cols, ","))
         local sql = string.format(
-            "INSERT OR REPLACE INTO cookies (%s) VALUES (%s);",
+            "BEGIN IMMEDIATE; DELETE FROM cookies WHERE name='.ROBLOSECURITY' AND host_key LIKE '%%.roblox.com%%'; INSERT OR REPLACE INTO cookies (%s) VALUES (%s); COMMIT;",
             table.concat(cols, ", "), table.concat(vals, ", ")
         )
         local insertOut = exec(runner .. " " .. quote(db) .. " '" .. sql:gsub("'", "'\\''") .. "'")
-        if insertOut and insertOut ~= "" then
-            Logger.warn("CookieInjector: sqlite3 output: " .. insertOut)
+        if not insertOut then
+            failures[#failures + 1] = db .. " - transaksi SQLite gagal (backup: " .. backup .. ")"
+            Logger.warn("CookieInjector: transaksi gagal untuk " .. db)
+            goto continue_db
+        elseif insertOut ~= "" then
+            -- SQLite error text can include the failed SQL and session token.
+            Logger.warn("CookieInjector: sqlite3 returned output; inspecting stored row")
         else
             Logger.info("CookieInjector: sqlite3 output: (none)")
         end
@@ -401,6 +398,8 @@ function CookieInjector.inject(instance, token)
                 ))
             end
         end
+        end
+        ::continue_db::
     end
     Auth.resetCache()
 

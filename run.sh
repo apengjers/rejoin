@@ -12,8 +12,29 @@
 #          (or chmod +x run.sh && ./run.sh ...)
 # Ctrl+C in THIS terminal stops the engine; no need to open a second session.
 
-cd "$HOME/rejoin" || exit 1
-lua main.lua "$@" &
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
+cd "$SCRIPT_DIR" || exit 1
+TTY_STATE=
+if [ -t 0 ]; then
+    TTY_STATE=$(stty -g </dev/tty 2>/dev/null) || TTY_STATE=
+    # POSIX shells may give background jobs /dev/null as stdin. Keep menu input on TTY.
+    lua main.lua "$@" </dev/tty &
+else
+    lua main.lua "$@" &
+fi
 PID=$!
-trap 'kill -TERM "$PID" 2>/dev/null; exit 0' INT TERM
+restore_tty() {
+    if [ -n "$TTY_STATE" ]; then stty "$TTY_STATE" </dev/tty 2>/dev/null; fi
+}
+stop_child() {
+    kill -TERM "$PID" 2>/dev/null
+    wait "$PID" 2>/dev/null
+    restore_tty
+    exit "$1"
+}
+trap 'stop_child 130' INT
+trap 'stop_child 143' TERM
 wait "$PID"
+STATUS=$?
+restore_tty
+exit "$STATUS"

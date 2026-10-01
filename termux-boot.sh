@@ -13,5 +13,5 @@
 # the interactive menu: launch all clones (Starting -> Running) with optimizer, then
 # keep monitoring until the process is stopped.
 
-cd "$HOME/rejoin" || exit 1
-exec lua main.lua --headless --start-monitor --auto-launch
+REJOIN_DIR=${REJOIN_DIR:-"$HOME/rejoin"}
+exec sh "$REJOIN_DIR/run.sh" --headless --start-monitor --auto-launch

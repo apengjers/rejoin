@@ -10,15 +10,25 @@ local function prompt(msg)
     return io.read()
 end
 
--- Read a (potentially huge) token, then immediately wipe the echoed paste line from
--- the screen. A 1170-char paste renders as one giant line that can stall the Termux UI
--- and eat subsequent keystrokes (Enter included), so it must be erased right after the
--- read while input is still responsive.
+-- Disable terminal echo while reading a long token. Echoing a long paste can stall
+-- Termux rendering and consume the next prompt's input.
 local function readToken(msg)
     io.write(msg)
     io.flush()
-    local t = io.read() or ""
-    io.write("\r\27[2K") -- carriage return + clear entire current line (echoed paste)
+    local saved
+    local state = io.popen("stty -g </dev/tty 2>/dev/null")
+    if state then
+        saved = state:read("*l")
+        state:close()
+    end
+    if saved and saved:match("^[%x:]+$") then
+        os.execute("stty -echo </dev/tty 2>/dev/null")
+    else
+        saved = nil
+    end
+    local t = io.read("*l") or ""
+    if saved then os.execute("stty " .. saved .. " </dev/tty 2>/dev/null") end
+    io.write("\n")
     io.flush()
     return t:gsub("^%s+", ""):gsub("%s+$", "")
 end
@@ -61,14 +71,10 @@ local function backToMain()
     io.read()
 end
 
--- Token actions (inject / cek validitas) do a huge paste, after which the terminal's
--- input pipeline can silently die. So they never wait for input again: print the
--- result and exit the process right away, dropping back to the shell. No further
--- io.read(), no stuck submenu/menu.
-local function exitAfter(msg)
+-- Return to the main menu after token actions. Token input is not echoed, so a
+-- long paste does not flood the terminal and block the following prompt.
+local function finish(msg)
     print(tostring(msg))
-    print("\nSelesai. Script keluar otomatis. Jalankan lagi dengan: lua main.lua")
-    os.exit(0)
 end
 
 function CLI.run()
@@ -88,7 +94,8 @@ function CLI.run()
                 print("=============================================================")
                 local token = readToken("Cookie .ROBLOSECURITY: ")
                 if token == "" then
-                    exitAfter("[GAGAL] Token kosong, dibatalkan.")
+                    finish("[GAGAL] Token kosong, dibatalkan.")
+                    return
                 else
                     local confirm = prompt(string.format("Inject cookie (%d char) ke %s? Force-stop app dulu. type 'y': ", #token, tostring(inst.package or ""))) or ""
                     if confirm:lower() == "y" then
@@ -122,16 +129,20 @@ local ok, msg = CookieInjector.inject(inst, token)
                                 Logger.info("VERDICT: " .. tostring(probeVerdict))
                                 print("")
                                 print("JANGAN verifikasi token (7>3) SELAMA app masih terbuka.")
-                                exitAfter("Inject + launch selesai.")
+                                finish("Inject + launch selesai.")
+                                return
                             else
-                                exitAfter("[GAGAL] " .. tostring(msg))
+                                finish("[GAGAL] " .. tostring(msg))
+                                return
                             end
                     else
-                        exitAfter("Dibatalkan")
+                        finish("Dibatalkan")
+                        return
                     end
                 end
             else
-                exitAfter("[GAGAL] Instances dibutuhkan untuk inject.")
+                finish("[GAGAL] Instances dibutuhkan untuk inject.")
+                return
             end
         elseif choice == "2" then
             local inst = pickInstance()
@@ -152,10 +163,12 @@ local ok, msg = CookieInjector.inject(inst, token)
             print("TUTUP dulu clone / app-nya sebelum cek (2 client pakai token sama serentak = trigger revoke).")
             local token = readToken("Cookie .ROBLOSECURITY: ")
             if token == "" then
-                exitAfter("[GAGAL] Token kosong, dibatalkan.")
+                finish("[GAGAL] Token kosong, dibatalkan.")
+                return
             else
                 local ok, msg = CookieInjector.verifyRemote(token)
-                exitAfter(ok and ("[VALID] " .. tostring(msg)) or ("[GAGAL] " .. tostring(msg)))
+                finish(ok and ("[VALID] " .. tostring(msg)) or ("[GAGAL] " .. tostring(msg)))
+                return
             end
         elseif choice == "4" then
             print("Exiting Inject Cookie")
